@@ -82,6 +82,7 @@ const Ticket = () => {
   const [loading, setLoading] = useState(true);
   const [contact, setContact] = useState({});
   const [ticket, setTicket] = useState({});
+  const [messageToScrollToId, setMessageToScrollToId] = useState(null); // <-- NOVO ESTADO
 
   useEffect(() => {
     setLoading(true);
@@ -143,6 +144,13 @@ const Ticket = () => {
     setDrawerOpen(false);
   };
 
+  // Função para ser passada para o MessageSearchModal
+  const handleNavigateToMessage = (messageId) => {
+    setMessageToScrollToId(messageId); // Define o ID da mensagem para rolar
+    // Opcional: Você pode querer fechar o ContactDrawer se ele estiver aberto
+    // handleDrawerClose();
+  };
+
   return (
     <div className={classes.root} id="drawer-container">
       <Paper
@@ -161,13 +169,19 @@ const Ticket = () => {
             />
           </div>
           <div className={classes.ticketActionButtons}>
-            <TicketActionButtons ticket={ticket} />
+            {/* Passe a função handleNavigateToMessage para TicketActionButtons */}
+            <TicketActionButtons
+              ticket={ticket}
+              onNavigateToMessage={handleNavigateToMessage} // <-- PASSE A PROP AQUI
+            />
           </div>
         </TicketHeader>
         <ReplyMessageProvider>
+          {/* Passe o messageToScrollToId para MessagesList */}
           <MessagesList
             ticketId={ticketId}
             isGroup={ticket.isGroup}
+            messageToScrollToId={messageToScrollToId} // <-- PASSE A PROP AQUI
           ></MessagesList>
           <MessageInput ticketStatus={ticket.status} />
         </ReplyMessageProvider>

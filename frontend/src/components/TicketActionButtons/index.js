@@ -3,7 +3,8 @@ import { useHistory } from "react-router-dom";
 
 import { makeStyles } from "@material-ui/core/styles";
 import { IconButton } from "@material-ui/core";
-import { MoreVert, Replay } from "@material-ui/icons";
+import { MoreVert, Replay, Search } from "@material-ui/icons";
+
 
 import { i18n } from "../../translate/i18n";
 import api from "../../services/api";
@@ -11,6 +12,7 @@ import TicketOptionsMenu from "../TicketOptionsMenu";
 import ButtonWithSpinner from "../ButtonWithSpinner";
 import toastError from "../../errors/toastError";
 import { AuthContext } from "../../context/Auth/AuthContext";
+import MessageSearchModal from "../MessageSearchModal";
 
 const useStyles = makeStyles(theme => ({
 	actionButtons: {
@@ -24,11 +26,13 @@ const useStyles = makeStyles(theme => ({
 	},
 }));
 
+
 const TicketActionButtons = ({ ticket }) => {
 	const classes = useStyles();
 	const history = useHistory();
 	const [anchorEl, setAnchorEl] = useState(null);
 	const [loading, setLoading] = useState(false);
+	const [messageSearchOpen, setMessageSearchOpen] = useState(false);
 	const ticketOptionsMenuOpen = Boolean(anchorEl);
 	const { user } = useContext(AuthContext);
 
@@ -39,6 +43,14 @@ const TicketActionButtons = ({ ticket }) => {
 	const handleCloseTicketOptionsMenu = e => {
 		setAnchorEl(null);
 	};
+
+	const handleOpenMessageSearch = () => {
+  setMessageSearchOpen(true);
+};
+
+const handleCloseMessageSearch = () => {
+  setMessageSearchOpen(false);
+};
 
 	const handleUpdateTicketStatus = async (e, status, userId) => {
 		setLoading(true);
@@ -91,6 +103,9 @@ const TicketActionButtons = ({ ticket }) => {
 					>
 						{i18n.t("messagesList.header.buttons.resolve")}
 					</ButtonWithSpinner>
+					<IconButton onClick={handleOpenMessageSearch}>
+						<Search />
+					</IconButton>
 					<IconButton onClick={handleOpenTicketOptionsMenu}>
 						<MoreVert />
 					</IconButton>
@@ -99,6 +114,11 @@ const TicketActionButtons = ({ ticket }) => {
 						anchorEl={anchorEl}
 						menuOpen={ticketOptionsMenuOpen}
 						handleClose={handleCloseTicketOptionsMenu}
+					/>
+					<MessageSearchModal
+						open={messageSearchOpen}
+						onClose={handleCloseMessageSearch}
+						ticketId={ticket.id}
 					/>
 				</>
 			)}

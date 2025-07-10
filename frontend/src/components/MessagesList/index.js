@@ -259,6 +259,11 @@ const useStyles = makeStyles((theme) => ({
     backgroundColor: "inherit",
     padding: 10,
   },
+  // Estilo para destaque temporário
+  highlightedMessage: {
+    backgroundColor: 'yellow !important', // Cor de destaque
+    transition: 'background-color 0.5s ease-in-out',
+  },
 }));
 
 const reducer = (state, action) => {
@@ -305,16 +310,18 @@ const reducer = (state, action) => {
   if (action.type === "RESET") {
     return [];
   }
+  return state; // Retorna o estado atual se a ação não for reconhecida
 };
 
-const MessagesList = ({ ticketId, isGroup }) => {
+// Adicione messageToScrollToId nas props
+const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
   const classes = useStyles();
-
   const [messagesList, dispatch] = useReducer(reducer, []);
   const [pageNumber, setPageNumber] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const lastMessageRef = useRef();
+  const messagesListContainerRef = useRef(null); // Nova referência para o container de mensagens
 
   const [selectedMessage, setSelectedMessage] = useState({});
   const [anchorEl, setAnchorEl] = useState(null);
@@ -343,7 +350,7 @@ const MessagesList = ({ ticketId, isGroup }) => {
             setLoading(false);
           }
 
-          if (pageNumber === 1 && data.messages.length > 1) {
+          if (pageNumber === 1 && data.messages.length > 0) { // Ajustado para > 0
             scrollToBottom();
           }
         } catch (err) {
@@ -379,6 +386,21 @@ const MessagesList = ({ ticketId, isGroup }) => {
     };
   }, [ticketId]);
 
+  // Efeito para lidar com rolagem para uma mensagem específica
+  useEffect(() => {
+    if (messageToScrollToId && messagesListContainerRef.current) {
+      const messageElement = document.getElementById(`message-${messageToScrollToId}`);
+      if (messageElement) {
+        messageElement.scrollIntoView({ behavior: "smooth", block: "center" });
+        // Adiciona e remove destaque temporário
+        messageElement.classList.add(classes.highlightedMessage);
+        setTimeout(() => {
+          messageElement.classList.remove(classes.highlightedMessage);
+        }, 2000); // Remove destaque após 2 segundos
+      }
+    }
+  }, [messageToScrollToId, messagesList]); // messagesList como dependência para garantir que a mensagem esteja no DOM
+
   const loadMore = () => {
     setPageNumber((prevPageNumber) => prevPageNumber + 1);
   };
@@ -390,18 +412,10 @@ const MessagesList = ({ ticketId, isGroup }) => {
   };
 
   const handleScroll = (e) => {
-    if (!hasMore) return;
+    if (!hasMore || loading) return; // Se não tem mais ou está carregando, sai
     const { scrollTop } = e.currentTarget;
 
-    if (scrollTop === 0) {
-      document.getElementById("messagesList").scrollTop = 1;
-    }
-
-    if (loading) {
-      return;
-    }
-
-    if (scrollTop < 50) {
+    if (scrollTop < 50) { // Se o scroll está próximo do topo
       loadMore();
     }
   };
@@ -429,8 +443,6 @@ const MessagesList = ({ ticketId, isGroup }) => {
       return <LocationPreview image={imageLocation} link={linkLocation} description={descriptionLocation} />
     }
     else if (message.mediaType === "vcard") {
-      //console.log("vcard")
-      //console.log(message)
       let array = message.body.split("\n");
       let obj = [];
       let contact = "";
@@ -448,23 +460,6 @@ const MessagesList = ({ ticketId, isGroup }) => {
       }
       return <VcardPreview contact={contact} numbers={obj[0]?.number} />
     }
-    /*else if (message.mediaType === "multi_vcard") {
-      console.log("multi_vcard")
-      console.log(message)
-    	
-      if(message.body !== null && message.body !== "") {
-        let newBody = JSON.parse(message.body)
-        return (
-          <>
-            {
-            newBody.map(v => (
-              <VcardPreview contact={v.name} numbers={v.number} />
-            ))
-            }
-          </>
-        )
-      } else return (<></>)
-    }*/
     else if ( /^.*\.(jpe?g|png|gif)?$/i.exec(message.mediaUrl) && message.mediaType === "image") {
       return <ModalImageCors imageUrl={message.mediaUrl} />;
     } else if (message.mediaType === "audio") {
@@ -505,11 +500,12 @@ const MessagesList = ({ ticketId, isGroup }) => {
       return <Done fontSize="small" className={classes.ackIcons} />;
     }
     if (message.ack === 2) {
-      return <DoneAll fontSize="small" className={classes.ackIcons} />;
+      return <DoneAll fontSize="small" className={classes.ackDoneAllIcon} />;
     }
     if (message.ack === 3 || message.ack === 4) {
       return <DoneAll fontSize="small" className={classes.ackDoneAllIcon} />;
     }
+    return null; // Retorna null se nenhum ack for correspondido
   };
 
   const renderDailyTimestamps = (message, index) => {
@@ -525,7 +521,7 @@ const MessagesList = ({ ticketId, isGroup }) => {
         </span>
       );
     }
-    if (index < messagesList.length - 1) {
+    if (index < messagesList.length) { // Ajustado para messagesList.length
       let messageDay = parseISO(messagesList[index].createdAt);
       let previousMessageDay = parseISO(messagesList[index - 1].createdAt);
 
@@ -542,15 +538,7 @@ const MessagesList = ({ ticketId, isGroup }) => {
         );
       }
     }
-    if (index === messagesList.length - 1) {
-      return (
-        <div
-          key={`ref-${message.createdAt}`}
-          ref={lastMessageRef}
-          style={{ float: "left", clear: "both" }}
-        />
-      );
-    }
+    return null; // Retorna null se não houver timestamp diário para renderizar
   };
 
   const renderMessageDivider = (message, index) => {
@@ -564,9 +552,11 @@ const MessagesList = ({ ticketId, isGroup }) => {
         );
       }
     }
+    return null; // Retorna null se não houver divisor para renderizar
   };
 
   const renderQuotedMessage = (message) => {
+    if (!message.quotedMsg) return null; // Retorna null se não houver quotedMsg
     return (
       <div
         className={clsx(classes.quotedContainerLeft, {
@@ -593,82 +583,57 @@ const MessagesList = ({ ticketId, isGroup }) => {
   const renderMessages = () => {
     if (messagesList.length > 0) {
       const viewMessagesList = messagesList.map((message, index) => {
-        if (!message.fromMe) {
-          return (
-            <React.Fragment key={message.id}>
-              {renderDailyTimestamps(message, index)}
-              {renderMessageDivider(message, index)}
-              <div className={classes.messageLeft}>
-                <IconButton
-                  variant="contained"
-                  size="small"
-                  id="messageActionsButton"
-                  disabled={message.isDeleted}
-                  className={classes.messageActionsButton}
-                  onClick={(e) => handleOpenMessageOptionsMenu(e, message)}
-                >
-                  <ExpandMore />
-                </IconButton>
-                {isGroup && (
-                  <span className={classes.messageContactName}>
-                    {message.contact?.name}
-                  </span>
+        const isFromMe = message.fromMe;
+        return (
+          <React.Fragment key={message.id}>
+            {renderDailyTimestamps(message, index)}
+            {renderMessageDivider(message, index)}
+            <div
+              id={`message-${message.id}`} // Adicione o ID para rolagem AQUI
+              className={clsx(
+                isFromMe ? classes.messageRight : classes.messageLeft,
+                {
+                  [classes.messageRight]: isFromMe,
+                  [classes.messageLeft]: !isFromMe,
+                }
+              )}
+            >
+              <IconButton
+                variant="contained"
+                size="small"
+                id="messageActionsButton"
+                disabled={message.isDeleted}
+                className={classes.messageActionsButton}
+                onClick={(e) => handleOpenMessageOptionsMenu(e, message)}
+              >
+                <ExpandMore />
+              </IconButton>
+              {!isFromMe && isGroup && (
+                <span className={classes.messageContactName}>
+                  {message.contact?.name}
+                </span>
+              )}
+              {(message.mediaUrl || message.mediaType === "location" || message.mediaType === "vcard") && checkMessageMedia(message)}
+              <div className={clsx(classes.textContentItem, {
+                [classes.textContentItemDeleted]: message.isDeleted,
+              })}>
+                {message.isDeleted && (
+                  <Block
+                    color="disabled"
+                    fontSize="small"
+                    className={classes.deletedIcon}
+                  />
                 )}
-                {(message.mediaUrl || message.mediaType === "location" || message.mediaType === "vcard"
-                  //|| message.mediaType === "multi_vcard" 
-                ) && checkMessageMedia(message)}
-                <div className={classes.textContentItem}>
-                  {message.quotedMsg && renderQuotedMessage(message)}
-                  <MarkdownWrapper>{message.body}</MarkdownWrapper>
-                  <span className={classes.timestamp}>
-                    {format(parseISO(message.createdAt), "HH:mm")}
-                  </span>
-                </div>
+                {renderQuotedMessage(message)}
+                <MarkdownWrapper>{message.body}</MarkdownWrapper>
+                <span className={classes.timestamp}>
+                  {format(parseISO(message.createdAt), "HH:mm")}
+                  {renderMessageAck(message)}
+                </span>
               </div>
-            </React.Fragment>
-          );
-        } else {
-          return (
-            <React.Fragment key={message.id}>
-              {renderDailyTimestamps(message, index)}
-              {renderMessageDivider(message, index)}
-              <div className={classes.messageRight}>
-                <IconButton
-                  variant="contained"
-                  size="small"
-                  id="messageActionsButton"
-                  disabled={message.isDeleted}
-                  className={classes.messageActionsButton}
-                  onClick={(e) => handleOpenMessageOptionsMenu(e, message)}
-                >
-                  <ExpandMore />
-                </IconButton>
-                {(message.mediaUrl || message.mediaType === "location" || message.mediaType === "vcard"
-                  //|| message.mediaType === "multi_vcard" 
-                ) && checkMessageMedia(message)}
-                <div
-                  className={clsx(classes.textContentItem, {
-                    [classes.textContentItemDeleted]: message.isDeleted,
-                  })}
-                >
-                  {message.isDeleted && (
-                    <Block
-                      color="disabled"
-                      fontSize="small"
-                      className={classes.deletedIcon}
-                    />
-                  )}
-                  {message.quotedMsg && renderQuotedMessage(message)}
-                  <MarkdownWrapper>{message.body}</MarkdownWrapper>
-                  <span className={classes.timestamp}>
-                    {format(parseISO(message.createdAt), "HH:mm")}
-                    {renderMessageAck(message)}
-                  </span>
-                </div>
-              </div>
-            </React.Fragment>
-          );
-        }
+            </div>
+          </React.Fragment>
+        );
       });
       return viewMessagesList;
     } else {
@@ -688,14 +653,16 @@ const MessagesList = ({ ticketId, isGroup }) => {
         id="messagesList"
         className={classes.messagesList}
         onScroll={handleScroll}
+        ref={messagesListContainerRef} // Atribua a referência aqui
       >
         {messagesList.length > 0 ? renderMessages() : []}
+        {loading && (
+          <div style={{ display: "flex", justifyContent: "center", marginTop: 10 }}>
+            <CircularProgress className={classes.circleLoading} />
+          </div>
+        )}
+        <div ref={lastMessageRef} />
       </div>
-      {loading && (
-        <div>
-          <CircularProgress className={classes.circleLoading} />
-        </div>
-      )}
     </div>
   );
 };

@@ -1,8 +1,10 @@
 import { Request, Response } from "express";
-
+import { Op } from "sequelize";
 import SetTicketMessagesAsRead from "../helpers/SetTicketMessagesAsRead";
 import { getIO } from "../libs/socket";
 import Message from "../models/Message";
+import Ticket from "../models/Ticket";
+import Contact from "../models/Contact";
 
 import ListMessagesService from "../services/MessageServices/ListMessagesService";
 import ShowTicketService from "../services/TicketServices/ShowTicketService";
@@ -19,6 +21,75 @@ type MessageData = {
   fromMe: boolean;
   read: boolean;
   quotedMsg?: Message;
+};
+
+const normalizeText = (text: any) => {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[-\s]+/g, " ")
+    .trim();
+};
+
+export const searchMessages = async (
+  req: Request,
+  res: Response
+): Promise<Response> => {
+  const { ticketId } = req.params;
+  const { q, page = 1, limit = 40 } = req.query;
+
+  if (!q || typeof q !== "string" || q.length < 2) {
+    return res.status(400).json({
+      error: "Termo de busca deve ser uma string com pelo menos 2 caracteres."
+    });
+  }
+
+  const offset = (parseInt(page as string, 10) - 1) * parseInt(limit as string, 10);
+  const parsedLimit = parseInt(limit as string, 10);
+  const normalizedQuery = normalizeText(q);
+
+  try {
+    const { rows: messages, count } = await Message.findAndCountAll({
+      where: {
+        ticketId: parseInt(ticketId, 10),
+        body: {
+          [Op.like]: `%${normalizedQuery}%`
+        }
+      },
+      order: [["createdAt", "DESC"]],
+      limit: parsedLimit,
+      offset: offset,
+      include: [
+        {
+          model: Ticket,
+          as: "ticket",
+          attributes: ["id", "contactId"]
+        },
+        {
+          model: Contact,
+          as: "contact",
+          attributes: ["id", "name", "number"]
+        }
+      ],
+      attributes: ["id", "body", "fromMe", "createdAt", "ticketId"]
+    });
+
+    const filteredMessages = messages.filter((msg: any) =>
+      normalizeText(msg.body).includes(normalizedQuery)
+    );
+
+    const hasMoreResults = filteredMessages.length === parsedLimit;
+
+    return res.status(200).json({
+      messages: filteredMessages,
+      count,
+      hasMore: hasMoreResults
+    });
+  } catch (error) {
+    console.error("Erro ao buscar mensagens:", error);
+    return res.status(500).json({ error: "Erro interno do servidor ao buscar mensagens." });
+  }
 };
 
 export const index = async (req: Request, res: Response): Promise<Response> => {
