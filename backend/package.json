@@ -6,11 +6,18 @@
   "scripts": {
     "build": "tsc",
     "watch": "tsc -w",
-    "start": "nodemon dist/server.js",
+    "start": "node dist/server.js",
+    "dev": "ts-node-dev --respawn --transpile-only --ignore node_modules src/server.ts",
     "dev:server": "ts-node-dev --respawn --transpile-only --ignore node_modules src/server.ts",
+    "db:migrate": "npx sequelize db:migrate",
+    "db:migrate:undo": "npx sequelize db:migrate:undo",
+    "db:seed": "npx sequelize db:seed:all",
+    "db:reset": "npx sequelize db:migrate:undo:all && npx sequelize db:migrate && npx sequelize db:seed:all",
     "pretest": "NODE_ENV=test sequelize db:migrate && NODE_ENV=test sequelize db:seed:all",
     "test": "NODE_ENV=test jest",
-    "posttest": "NODE_ENV=test sequelize db:migrate:undo:all"
+    "posttest": "NODE_ENV=test sequelize db:migrate:undo:all",
+    "lint": "eslint src --ext .ts",
+    "lint:fix": "eslint src --ext .ts --fix"
   },
   "author": "",
   "license": "MIT",

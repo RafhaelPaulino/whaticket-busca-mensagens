@@ -13,22 +13,26 @@ interface Session extends Client {
 const sessions: Session[] = [];
 
 const syncUnreadMessages = async (wbot: Session) => {
-  const chats = await wbot.getChats();
+  try {
+    const chats = await wbot.getChats();
 
-  /* eslint-disable no-restricted-syntax */
-  /* eslint-disable no-await-in-loop */
-  for (const chat of chats) {
-    if (chat.unreadCount > 0) {
-      const unreadMessages = await chat.fetchMessages({
-        limit: chat.unreadCount
-      });
+    /* eslint-disable no-restricted-syntax */
+    /* eslint-disable no-await-in-loop */
+    for (const chat of chats) {
+      if (chat.unreadCount > 0) {
+        const unreadMessages = await chat.fetchMessages({
+          limit: chat.unreadCount
+        });
 
-      for (const msg of unreadMessages) {
-        await handleMessage(msg, wbot);
+        for (const msg of unreadMessages) {
+          await handleMessage(msg, wbot);
+        }
+
+        await chat.sendSeen();
       }
-
-      await chat.sendSeen();
     }
+  } catch (err) {
+    logger.error(`Error syncing unread messages: ${err}`);
   }
 };
 
@@ -40,19 +44,25 @@ export const initWbot = async (whatsapp: Whatsapp): Promise<Session> => {
       let sessionCfg;
 
       if (whatsapp && whatsapp.session) {
-        sessionCfg = JSON.parse(whatsapp.session);
+        try {
+          sessionCfg = JSON.parse(whatsapp.session);
+        } catch (err) {
+          logger.error(`Error parsing session config for ${sessionName}: ${err}`);
+          sessionCfg = null;
+        }
       }
 
-      const args:String = process.env.CHROME_ARGS || "";
+      const args = process.env.CHROME_ARGS || "--no-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-accelerated-2d-canvas --no-first-run --no-zygote --single-process --disable-gpu";
 
       const wbot: Session = new Client({
         session: sessionCfg,
-        authStrategy: new LocalAuth({clientId: 'bd_'+whatsapp.id}),
+        authStrategy: new LocalAuth({ clientId: 'bd_' + whatsapp.id }),
         puppeteer: {
           executablePath: process.env.CHROME_BIN || undefined,
           // @ts-ignore
           browserWSEndpoint: process.env.CHROME_WS || undefined,
-          args: args.split(' ')
+          args: args.split(' '),
+          headless: true
         }
       });
 
@@ -80,7 +90,7 @@ export const initWbot = async (whatsapp: Whatsapp): Promise<Session> => {
       });
 
       wbot.on("auth_failure", async msg => {
-        console.error(
+        logger.error(
           `Session: ${sessionName} AUTHENTICATION FAILURE! Reason: ${msg}`
         );
 
@@ -127,8 +137,29 @@ export const initWbot = async (whatsapp: Whatsapp): Promise<Session> => {
 
         resolve(wbot);
       });
+
+      wbot.on("disconnected", async (reason) => {
+        logger.info(`Session: ${sessionName} DISCONNECTED. Reason: ${reason}`);
+        
+        await whatsapp.update({
+          status: "DISCONNECTED",
+          qrcode: "",
+        });
+
+        io.emit("whatsappSession", {
+          action: "update",
+          session: whatsapp
+        });
+
+        const sessionIndex = sessions.findIndex(s => s.id === whatsapp.id);
+        if (sessionIndex !== -1) {
+          sessions.splice(sessionIndex, 1);
+        }
+      });
+
     } catch (err) {
       logger.error(err);
+      reject(err);
     }
   });
 };

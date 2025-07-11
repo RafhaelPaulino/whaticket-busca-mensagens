@@ -392,14 +392,13 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
       const messageElement = document.getElementById(`message-${messageToScrollToId}`);
       if (messageElement) {
         messageElement.scrollIntoView({ behavior: "smooth", block: "center" });
-        // Adiciona e remove destaque temporário
         messageElement.classList.add(classes.highlightedMessage);
         setTimeout(() => {
           messageElement.classList.remove(classes.highlightedMessage);
-        }, 2000); // Remove destaque após 2 segundos
+        }, 2000);
       }
     }
-  }, [messageToScrollToId, messagesList]); // messagesList como dependência para garantir que a mensagem esteja no DOM
+  }, [messageToScrollToId, messagesList, classes.highlightedMessage]); // <-- ADICIONADO classes.highlightedMessage
 
   const loadMore = () => {
     setPageNumber((prevPageNumber) => prevPageNumber + 1);
@@ -460,7 +459,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
       }
       return <VcardPreview contact={contact} numbers={obj[0]?.number} />
     }
-    else if ( /^.*\.(jpe?g|png|gif)?$/i.exec(message.mediaUrl) && message.mediaType === "image") {
+    else if (/^.*\.(jpe?g|png|gif)?$/i.exec(message.mediaUrl) && message.mediaType === "image") {
       return <ModalImageCors imageUrl={message.mediaUrl} />;
     } else if (message.mediaType === "audio") {
       return <Audio url={message.mediaUrl} />
@@ -505,7 +504,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
     if (message.ack === 3 || message.ack === 4) {
       return <DoneAll fontSize="small" className={classes.ackDoneAllIcon} />;
     }
-    return null; // Retorna null se nenhum ack for correspondido
+    return null; // <-- ADICIONADO return null
   };
 
   const renderDailyTimestamps = (message, index) => {
@@ -538,7 +537,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
         );
       }
     }
-    return null; // Retorna null se não houver timestamp diário para renderizar
+    return null; // <-- ADICIONADO return null
   };
 
   const renderMessageDivider = (message, index) => {
@@ -552,11 +551,11 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
         );
       }
     }
-    return null; // Retorna null se não houver divisor para renderizar
+    return null; // <-- ADICIONADO return null
   };
 
   const renderQuotedMessage = (message) => {
-    if (!message.quotedMsg) return null; // Retorna null se não houver quotedMsg
+    if (!message.quotedMsg) return null; // <-- ADICIONADO return null
     return (
       <div
         className={clsx(classes.quotedContainerLeft, {

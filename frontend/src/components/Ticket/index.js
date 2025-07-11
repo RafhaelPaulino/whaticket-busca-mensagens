@@ -82,7 +82,7 @@ const Ticket = () => {
   const [loading, setLoading] = useState(true);
   const [contact, setContact] = useState({});
   const [ticket, setTicket] = useState({});
-  const [messageToScrollToId, setMessageToScrollToId] = useState(null); // <-- NOVO ESTADO
+  const [messageToScrollToId, setMessageToScrollToId] = useState(null);
 
   useEffect(() => {
     setLoading(true);
@@ -144,11 +144,8 @@ const Ticket = () => {
     setDrawerOpen(false);
   };
 
-  // Função para ser passada para o MessageSearchModal
   const handleNavigateToMessage = (messageId) => {
-    setMessageToScrollToId(messageId); // Define o ID da mensagem para rolar
-    // Opcional: Você pode querer fechar o ContactDrawer se ele estiver aberto
-    // handleDrawerClose();
+    setMessageToScrollToId(messageId);
   };
 
   return (
@@ -169,19 +166,17 @@ const Ticket = () => {
             />
           </div>
           <div className={classes.ticketActionButtons}>
-            {/* Passe a função handleNavigateToMessage para TicketActionButtons */}
             <TicketActionButtons
               ticket={ticket}
-              onNavigateToMessage={handleNavigateToMessage} // <-- PASSE A PROP AQUI
+              onNavigateToMessage={handleNavigateToMessage}
             />
           </div>
         </TicketHeader>
         <ReplyMessageProvider>
-          {/* Passe o messageToScrollToId para MessagesList */}
           <MessagesList
             ticketId={ticketId}
             isGroup={ticket.isGroup}
-            messageToScrollToId={messageToScrollToId} // <-- PASSE A PROP AQUI
+            messageToScrollToId={messageToScrollToId}
           ></MessagesList>
           <MessageInput ticketStatus={ticket.status} />
         </ReplyMessageProvider>

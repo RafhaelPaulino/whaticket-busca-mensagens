@@ -74,7 +74,6 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-// Adicione onNavigateToMessage nas props
 const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) => {
   const classes = useStyles();
   const [searchQuery, setSearchQuery] = useState("");
@@ -170,12 +169,11 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
     }
   }, [open]);
 
-  // Modifique handleMessageClick para chamar a nova prop
   const handleMessageClick = (messageId) => {
-    if (onNavigateToMessage) { // Verifica se a prop foi passada
-      onNavigateToMessage(messageId); // Chama a função para navegar
+    if (onNavigateToMessage) {
+      onNavigateToMessage(messageId);
     }
-    onClose(); // Fecha o modal após o clique
+    onClose();
   };
 
   const loadMoreResults = () => {
@@ -206,7 +204,7 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
       maxWidth={false}
     >
       <DialogTitle className={classes.dialogTitle}>
-        <Typography variant="h6" component="span">Buscar Mensagens</Typography> {/* <-- CORRIGIDO AQUI */}
+        <Typography variant="h6" component="span">Buscar Mensagens</Typography>
         <IconButton onClick={onClose} size="small">
           <Close />
         </IconButton>
@@ -250,10 +248,10 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
                     }
                     secondary={
                       <Box display="flex" justifyContent="space-between" alignItems="center">
-                        <Typography className={classes.messageDate} component="div"> {/* <-- CORRIGIDO AQUI */}
+                        <Typography className={classes.messageDate} component="div">
                           {formatDate(message.createdAt)}
                         </Typography>
-                        <Typography variant="caption" color="textSecondary" component="div"> {/* <-- CORRIGIDO AQUI */}
+                        <Typography variant="caption" color="textSecondary" component="div">
                           {message.fromMe ? "Você" : "Cliente"}
                         </Typography>
                       </Box>

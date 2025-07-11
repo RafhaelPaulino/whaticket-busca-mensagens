@@ -163,7 +163,7 @@ const reducer = (state, action) => {
 	useEffect(() => {
 		dispatch({ type: "RESET" });
 		setPageNumber(1);
-	}, [status, searchParam, dispatch, showAll, selectedQueueIds]);
+	}, [status, searchParam, showAll, selectedQueueIds]);
 
 	const { tickets, hasMore, loading } = useTickets({
 		pageNumber,
@@ -179,7 +179,7 @@ const reducer = (state, action) => {
 			type: "LOAD_TICKETS",
 			payload: tickets,
 		});
-	}, [tickets]);
+	}, [tickets, status, searchParam]);
 
 	useEffect(() => {
 		const socket = openSocket();

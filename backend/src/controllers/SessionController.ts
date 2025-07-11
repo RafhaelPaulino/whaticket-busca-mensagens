@@ -8,6 +8,10 @@ import { RefreshTokenService } from "../services/AuthServices/RefreshTokenServic
 export const store = async (req: Request, res: Response): Promise<Response> => {
   const { email, password } = req.body;
 
+  if (!email || !password) {
+    throw new AppError("Email and password are required", 400);
+  }
+
   const { token, serializedUser, refreshToken } = await AuthUserService({
     email,
     password
@@ -31,14 +35,18 @@ export const update = async (
     throw new AppError("ERR_SESSION_EXPIRED", 401);
   }
 
-  const { user, newToken, refreshToken } = await RefreshTokenService(
-    res,
-    token
-  );
+  try {
+    const { user, newToken, refreshToken } = await RefreshTokenService(
+      res,
+      token
+    );
 
-  SendRefreshToken(res, refreshToken);
+    SendRefreshToken(res, refreshToken);
 
-  return res.json({ token: newToken, user });
+    return res.json({ token: newToken, user });
+  } catch (err) {
+    throw new AppError("ERR_SESSION_EXPIRED", 401);
+  }
 };
 
 export const remove = async (
@@ -47,5 +55,5 @@ export const remove = async (
 ): Promise<Response> => {
   res.clearCookie("jrt");
 
-  return res.send();
+  return res.status(200).json({ message: "Logged out successfully" });
 };

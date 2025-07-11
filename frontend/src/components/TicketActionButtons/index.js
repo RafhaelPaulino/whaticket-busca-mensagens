@@ -26,8 +26,7 @@ const useStyles = makeStyles(theme => ({
 	},
 }));
 
-
-const TicketActionButtons = ({ ticket }) => {
+const TicketActionButtons = ({ ticket, onNavigateToMessage }) => {
 	const classes = useStyles();
 	const history = useHistory();
 	const [anchorEl, setAnchorEl] = useState(null);
@@ -45,12 +44,12 @@ const TicketActionButtons = ({ ticket }) => {
 	};
 
 	const handleOpenMessageSearch = () => {
-  setMessageSearchOpen(true);
-};
+		setMessageSearchOpen(true);
+	};
 
-const handleCloseMessageSearch = () => {
-  setMessageSearchOpen(false);
-};
+	const handleCloseMessageSearch = () => {
+		setMessageSearchOpen(false);
+	};
 
 	const handleUpdateTicketStatus = async (e, status, userId) => {
 		setLoading(true);
@@ -119,6 +118,7 @@ const handleCloseMessageSearch = () => {
 						open={messageSearchOpen}
 						onClose={handleCloseMessageSearch}
 						ticketId={ticket.id}
+						onNavigateToMessage={onNavigateToMessage}
 					/>
 				</>
 			)}
