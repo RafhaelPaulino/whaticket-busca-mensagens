@@ -1,3 +1,6 @@
+// frontend/src/components/TicketsManager/index.js
+// CORREÇÃO: Badge overlap warning
+
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { makeStyles } from "@material-ui/core/styles";
 import Paper from "@material-ui/core/Paper";
@@ -239,10 +242,12 @@ const TicketsManager = () => {
         >
           <Tab
             label={
+              {/* CORREÇÃO: overlap="rectangle" → overlap="rectangular" */}
               <Badge
                 className={classes.badge}
                 badgeContent={openCount}
                 color="primary"
+                overlap="rectangular"
               >
                 {i18n.t("ticketsList.assignedHeader")}
               </Badge>
@@ -251,10 +256,12 @@ const TicketsManager = () => {
           />
           <Tab
             label={
+              {/* CORREÇÃO: overlap="rectangle" → overlap="rectangular" */}
               <Badge
                 className={classes.badge}
                 badgeContent={pendingCount}
                 color="secondary"
+                overlap="rectangular"
               >
                 {i18n.t("ticketsList.pendingHeader")}
               </Badge>

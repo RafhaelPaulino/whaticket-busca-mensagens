@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect, useContext } from "react";
 import { useHistory } from "react-router-dom";
 import { format } from "date-fns";
@@ -64,10 +65,9 @@ const NotificationsPopOver = () => {
   useEffect(() => {
     soundAlertRef.current = play;
 
-    // Adicionar verificação antes de solicitar permissão
     const requestNotificationPermission = async () => {
-      if ('Notification' in window) { // Verifica se o navegador suporta notificações
-        if (Notification.permission === 'default') { // Só pede se ainda não foi concedido ou negado
+      if ('Notification' in window) {
+        if (Notification.permission === 'default') {
           try {
             const permission = await Notification.requestPermission();
             console.log('Permissão de notificação:', permission);
@@ -80,9 +80,8 @@ const NotificationsPopOver = () => {
       }
     };
 
-    // Solicita permissão ao carregar o componente, se necessário
     requestNotificationPermission();
-  }, [play]); // Dependência 'play' para garantir que o som esteja carregado se necessário
+  }, [play]);
 
   useEffect(() => {
     setNotifications(tickets);
@@ -92,6 +91,7 @@ const NotificationsPopOver = () => {
     ticketIdRef.current = ticketIdUrl;
   }, [ticketIdUrl]);
 
+  // CORREÇÃO: Cleanup melhorado para WebSocket
   useEffect(() => {
     const socket = openSocket();
 
@@ -149,7 +149,11 @@ const NotificationsPopOver = () => {
       }
     });
 
+    // CORREÇÃO: Cleanup adequado
     return () => {
+      socket.off("connect");
+      socket.off("ticket");
+      socket.off("appMessage");
       socket.disconnect();
     };
   }, [user]);
@@ -157,9 +161,8 @@ const NotificationsPopOver = () => {
   const handleNotifications = data => {
     const { message, contact, ticket } = data;
 
-    // Verifica novamente a permissão antes de criar a notificação
     if (!("Notification" in window) || Notification.permission !== "granted") {
-      return; // Não envia notificação se não há suporte ou permissão
+      return;
     }
 
     const options = {
@@ -214,7 +217,8 @@ const NotificationsPopOver = () => {
         aria-label="Open Notifications"
         className={classes.iconButton}
       >
-        <Badge badgeContent={notifications.length} color="secondary">
+        {/* CORREÇÃO: overlap="rectangle" → overlap="rectangular" */}
+        <Badge badgeContent={notifications.length} color="secondary" overlap="rectangular">
           <ChatIcon />
         </Badge>
       </IconButton>

@@ -1,4 +1,7 @@
-import { useState, useEffect, useReducer } from "react";
+// frontend/src/hooks/useWhatsApps/index.js
+// CORREÇÃO CRÍTICA: Memory leaks e state updates em componente desmontado
+
+import { useState, useEffect, useReducer, useRef } from "react";
 import openSocket from "../../services/socket-io";
 import toastError from "../../errors/toastError";
 
@@ -7,7 +10,6 @@ import api from "../../services/api";
 const reducer = (state, action) => {
 	if (action.type === "LOAD_WHATSAPPS") {
 		const whatsApps = action.payload;
-
 		return [...whatsApps];
 	}
 
@@ -40,7 +42,6 @@ const reducer = (state, action) => {
 
 	if (action.type === "DELETE_WHATSAPPS") {
 		const whatsAppId = action.payload;
-
 		const whatsAppIndex = state.findIndex(s => s.id === whatsAppId);
 		if (whatsAppIndex !== -1) {
 			state.splice(whatsAppIndex, 1);
@@ -56,45 +57,117 @@ const reducer = (state, action) => {
 const useWhatsApps = () => {
 	const [whatsApps, dispatch] = useReducer(reducer, []);
 	const [loading, setLoading] = useState(true);
+	
+	// CORREÇÃO: Refs para controlar componente montado
+	const isMountedRef = useRef(true);
+	const socketRef = useRef(null);
 
+	// CORREÇÃO: Cleanup no desmonte
 	useEffect(() => {
-		setLoading(true);
-		const fetchSession = async () => {
-			try {
-				const { data } = await api.get("/whatsapp/");
-				dispatch({ type: "LOAD_WHATSAPPS", payload: data });
-				setLoading(false);
-			} catch (err) {
-				setLoading(false);
-				toastError(err);
+		isMountedRef.current = true;
+		return () => {
+			isMountedRef.current = false;
+			// Cleanup do socket
+			if (socketRef.current) {
+				socketRef.current.off("whatsapp");
+				socketRef.current.off("whatsappSession");
+				socketRef.current.disconnect();
+				socketRef.current = null;
 			}
 		};
+	}, []);
+
+	// CORREÇÃO: Fetch inicial com verificação de montagem
+	useEffect(() => {
+		const fetchSession = async () => {
+			// Só executar se componente estiver montado
+			if (!isMountedRef.current) return;
+			
+			setLoading(true);
+			try {
+				const { data } = await api.get("/whatsapp/");
+				
+				// Verificar novamente se ainda está montado antes de atualizar state
+				if (isMountedRef.current) {
+					dispatch({ type: "LOAD_WHATSAPPS", payload: data });
+					setLoading(false);
+				}
+			} catch (err) {
+				// Só atualizar state e mostrar erro se componente ainda estiver montado
+				if (isMountedRef.current) {
+					setLoading(false);
+					// Só mostrar erro se não for 401 (não autenticado é esperado)
+					if (err?.response?.status !== 401) {
+						toastError(err);
+					}
+				}
+			}
+		};
+		
 		fetchSession();
 	}, []);
 
+	// CORREÇÃO: Socket com cleanup adequado
 	useEffect(() => {
+		// Só conectar socket se componente estiver montado
+		if (!isMountedRef.current) return;
+
+		// Cleanup do socket anterior se existir
+		if (socketRef.current) {
+			socketRef.current.off("whatsapp");
+			socketRef.current.off("whatsappSession");
+			socketRef.current.disconnect();
+		}
+
 		const socket = openSocket();
+		
+		// Verificar se socket foi criado com sucesso
+		if (!socket) {
+			console.warn("Socket não pôde ser criado no useWhatsApps");
+			return;
+		}
+
+		socketRef.current = socket;
 
 		socket.on("whatsapp", data => {
+			// Só atualizar se componente ainda estiver montado
+			if (!isMountedRef.current) return;
+			
 			if (data.action === "update") {
 				dispatch({ type: "UPDATE_WHATSAPPS", payload: data.whatsapp });
 			}
 		});
 
 		socket.on("whatsapp", data => {
+			// Só atualizar se componente ainda estiver montado
+			if (!isMountedRef.current) return;
+			
 			if (data.action === "delete") {
 				dispatch({ type: "DELETE_WHATSAPPS", payload: data.whatsappId });
 			}
 		});
 
 		socket.on("whatsappSession", data => {
+			// Só atualizar se componente ainda estiver montado
+			if (!isMountedRef.current) return;
+			
 			if (data.action === "update") {
 				dispatch({ type: "UPDATE_SESSION", payload: data.session });
 			}
 		});
 
+		socket.on("connect_error", (error) => {
+			console.error("Erro na conexão do socket (useWhatsApps):", error.message);
+		});
+
 		return () => {
-			socket.disconnect();
+			if (socket && socket.connected) {
+				socket.off("whatsapp");
+				socket.off("whatsappSession");
+				socket.off("connect_error");
+				socket.disconnect();
+			}
+			socketRef.current = null;
 		};
 	}, []);
 

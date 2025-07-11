@@ -1,4 +1,7 @@
-import React, { useState, useEffect, useReducer, useRef } from "react";
+// frontend/src/components/MessagesList/index.js
+// CORREÇÃO COMPLETA: Memory leaks, cleanup e performance
+
+import React, { useState, useEffect, useReducer, useRef, useCallback } from "react";
 
 import { isSameDay, parseISO, format } from "date-fns";
 import openSocket from "../../services/socket-io";
@@ -259,10 +262,12 @@ const useStyles = makeStyles((theme) => ({
     backgroundColor: "inherit",
     padding: 10,
   },
-  // Estilo para destaque temporário
+
+  // Estilo para destaque temporário de mensagem encontrada
   highlightedMessage: {
-    backgroundColor: 'yellow !important', // Cor de destaque
-    transition: 'background-color 0.5s ease-in-out',
+    backgroundColor: '#ffeb3b !important',
+    transition: 'background-color 2s ease-out',
+    boxShadow: '0 0 10px rgba(255, 235, 59, 0.8) !important',
   },
 }));
 
@@ -310,10 +315,10 @@ const reducer = (state, action) => {
   if (action.type === "RESET") {
     return [];
   }
-  return state; // Retorna o estado atual se a ação não for reconhecida
+
+  return state;
 };
 
-// Adicione messageToScrollToId nas props
 const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
   const classes = useStyles();
   const [messagesList, dispatch] = useReducer(reducer, []);
@@ -321,21 +326,35 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const lastMessageRef = useRef();
-  const messagesListContainerRef = useRef(null); // Nova referência para o container de mensagens
+  const messagesListContainerRef = useRef(null);
 
   const [selectedMessage, setSelectedMessage] = useState({});
   const [anchorEl, setAnchorEl] = useState(null);
   const messageOptionsMenuOpen = Boolean(anchorEl);
+  
+  // CORREÇÃO: useRef para controlar componente montado
+  const isMountedRef = useRef(true);
   const currentTicketId = useRef(ticketId);
+  const socketRef = useRef(null);
+
+  // CORREÇÃO: Cleanup no desmonte do componente
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     dispatch({ type: "RESET" });
     setPageNumber(1);
-
     currentTicketId.current = ticketId;
   }, [ticketId]);
 
+  // CORREÇÃO: Fetch messages com melhor controle de estado
   useEffect(() => {
+    if (!ticketId) return;
+
     setLoading(true);
     const delayDebounceFn = setTimeout(() => {
       const fetchMessages = async () => {
@@ -344,33 +363,45 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
             params: { pageNumber },
           });
 
-          if (currentTicketId.current === ticketId) {
+          // CORREÇÃO: Só atualiza se componente ainda está montado e é o mesmo ticket
+          if (isMountedRef.current && currentTicketId.current === ticketId) {
             dispatch({ type: "LOAD_MESSAGES", payload: data.messages });
             setHasMore(data.hasMore);
             setLoading(false);
-          }
 
-          if (pageNumber === 1 && data.messages.length > 0) { // Ajustado para > 0
-            scrollToBottom();
+            if (pageNumber === 1 && data.messages.length > 0) {
+              scrollToBottom();
+            }
           }
         } catch (err) {
-          setLoading(false);
-          toastError(err);
+          if (isMountedRef.current) {
+            setLoading(false);
+            toastError(err);
+          }
         }
       };
       fetchMessages();
     }, 500);
+
     return () => {
       clearTimeout(delayDebounceFn);
     };
   }, [pageNumber, ticketId]);
 
+  // CORREÇÃO: Socket.IO com cleanup adequado
   useEffect(() => {
-    const socket = openSocket();
+    if (!ticketId) return;
 
-    socket.on("connect", () => socket.emit("joinChatBox", ticketId));
+    const socket = openSocket();
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      socket.emit("joinChatBox", ticketId);
+    });
 
     socket.on("appMessage", (data) => {
+      if (!isMountedRef.current || currentTicketId.current !== ticketId) return;
+
       if (data.action === "create") {
         dispatch({ type: "ADD_MESSAGE", payload: data.message });
         scrollToBottom();
@@ -381,65 +412,91 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
       }
     });
 
+    socket.on("connect_error", (error) => {
+      console.error("Socket connection error:", error);
+    });
+
+    // CORREÇÃO: Cleanup completo do socket
     return () => {
-      socket.disconnect();
+      if (socket && socket.connected) {
+        socket.off("connect");
+        socket.off("appMessage");
+        socket.off("connect_error");
+        socket.disconnect();
+      }
+      socketRef.current = null;
     };
   }, [ticketId]);
 
-  // Efeito para lidar com rolagem para uma mensagem específica
+  // CORREÇÃO: Scroll para mensagem específica com destaque
   useEffect(() => {
-    if (messageToScrollToId && messagesListContainerRef.current) {
-      const messageElement = document.getElementById(`message-${messageToScrollToId}`);
-      if (messageElement) {
-        messageElement.scrollIntoView({ behavior: "smooth", block: "center" });
-        messageElement.classList.add(classes.highlightedMessage);
-        setTimeout(() => {
-          messageElement.classList.remove(classes.highlightedMessage);
-        }, 2000);
-      }
+    if (messageToScrollToId && messagesListContainerRef.current && messagesList.length > 0) {
+      const timer = setTimeout(() => {
+        const messageElement = document.getElementById(`message-${messageToScrollToId}`);
+        if (messageElement && isMountedRef.current) {
+          messageElement.scrollIntoView({ 
+            behavior: "smooth", 
+            block: "center" 
+          });
+          
+          // Adicionar destaque visual
+          messageElement.classList.add(classes.highlightedMessage);
+          
+          // Remover destaque após 3 segundos
+          setTimeout(() => {
+            if (messageElement && isMountedRef.current) {
+              messageElement.classList.remove(classes.highlightedMessage);
+            }
+          }, 3000);
+        }
+      }, 100);
+
+      return () => clearTimeout(timer);
     }
-  }, [messageToScrollToId, messagesList, classes.highlightedMessage]); // <-- ADICIONADO classes.highlightedMessage
+  }, [messageToScrollToId, messagesList, classes.highlightedMessage]);
 
-  const loadMore = () => {
-    setPageNumber((prevPageNumber) => prevPageNumber + 1);
-  };
+  const loadMore = useCallback(() => {
+    if (isMountedRef.current && hasMore && !loading) {
+      setPageNumber((prevPageNumber) => prevPageNumber + 1);
+    }
+  }, [hasMore, loading]);
 
-  const scrollToBottom = () => {
-    if (lastMessageRef.current) {
+  const scrollToBottom = useCallback(() => {
+    if (lastMessageRef.current && isMountedRef.current) {
       lastMessageRef.current.scrollIntoView({});
     }
-  };
+  }, []);
 
-  const handleScroll = (e) => {
-    if (!hasMore || loading) return; // Se não tem mais ou está carregando, sai
+  const handleScroll = useCallback((e) => {
+    if (!hasMore || loading || !isMountedRef.current) return;
     const { scrollTop } = e.currentTarget;
 
-    if (scrollTop < 50) { // Se o scroll está próximo do topo
+    if (scrollTop < 50) {
       loadMore();
     }
-  };
+  }, [hasMore, loading, loadMore]);
 
-  const handleOpenMessageOptionsMenu = (e, message) => {
+  const handleOpenMessageOptionsMenu = useCallback((e, message) => {
     setAnchorEl(e.currentTarget);
     setSelectedMessage(message);
-  };
+  }, []);
 
-  const handleCloseMessageOptionsMenu = (e) => {
+  const handleCloseMessageOptionsMenu = useCallback(() => {
     setAnchorEl(null);
-  };
+  }, []);
 
-  const checkMessageMedia = (message) => {
+  const checkMessageMedia = useCallback((message) => {
     if (message.mediaType === "location" && message.body.split('|').length >= 2) {
-      let locationParts = message.body.split('|')
-      let imageLocation = locationParts[0]
-      let linkLocation = locationParts[1]
+      let locationParts = message.body.split('|');
+      let imageLocation = locationParts[0];
+      let linkLocation = locationParts[1];
+      let descriptionLocation = null;
 
-      let descriptionLocation = null
+      if (locationParts.length > 2) {
+        descriptionLocation = message.body.split('|')[2];
+      }
 
-      if (locationParts.length > 2)
-        descriptionLocation = message.body.split('|')[2]
-
-      return <LocationPreview image={imageLocation} link={linkLocation} description={descriptionLocation} />
+      return <LocationPreview image={imageLocation} link={linkLocation} description={descriptionLocation} />;
     }
     else if (message.mediaType === "vcard") {
       let array = message.body.split("\n");
@@ -457,12 +514,12 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
           }
         }
       }
-      return <VcardPreview contact={contact} numbers={obj[0]?.number} />
+      return <VcardPreview contact={contact} numbers={obj[0]?.number} />;
     }
     else if (/^.*\.(jpe?g|png|gif)?$/i.exec(message.mediaUrl) && message.mediaType === "image") {
       return <ModalImageCors imageUrl={message.mediaUrl} />;
     } else if (message.mediaType === "audio") {
-      return <Audio url={message.mediaUrl} />
+      return <Audio url={message.mediaUrl} />;
     } else if (message.mediaType === "video") {
       return (
         <video
@@ -489,9 +546,9 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
         </>
       );
     }
-  };
+  }, [classes.messageMedia, classes.downloadMedia]);
 
-  const renderMessageAck = (message) => {
+  const renderMessageAck = useCallback((message) => {
     if (message.ack === 0) {
       return <AccessTime fontSize="small" className={classes.ackIcons} />;
     }
@@ -504,10 +561,10 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
     if (message.ack === 3 || message.ack === 4) {
       return <DoneAll fontSize="small" className={classes.ackDoneAllIcon} />;
     }
-    return null; // <-- ADICIONADO return null
-  };
+    return null;
+  }, [classes.ackIcons, classes.ackDoneAllIcon]);
 
-  const renderDailyTimestamps = (message, index) => {
+  const renderDailyTimestamps = useCallback((message, index) => {
     if (index === 0) {
       return (
         <span
@@ -520,7 +577,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
         </span>
       );
     }
-    if (index < messagesList.length) { // Ajustado para messagesList.length
+    if (index < messagesList.length) {
       let messageDay = parseISO(messagesList[index].createdAt);
       let previousMessageDay = parseISO(messagesList[index - 1].createdAt);
 
@@ -537,10 +594,10 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
         );
       }
     }
-    return null; // <-- ADICIONADO return null
-  };
+    return null;
+  }, [messagesList, classes.dailyTimestamp, classes.dailyTimestampText]);
 
-  const renderMessageDivider = (message, index) => {
+  const renderMessageDivider = useCallback((message, index) => {
     if (index < messagesList.length && index > 0) {
       let messageUser = messagesList[index].fromMe;
       let previousMessageUser = messagesList[index - 1].fromMe;
@@ -551,11 +608,11 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
         );
       }
     }
-    return null; // <-- ADICIONADO return null
-  };
+    return null;
+  }, [messagesList]);
 
-  const renderQuotedMessage = (message) => {
-    if (!message.quotedMsg) return null; // <-- ADICIONADO return null
+  const renderQuotedMessage = useCallback((message) => {
+    if (!message.quotedMsg) return null;
     return (
       <div
         className={clsx(classes.quotedContainerLeft, {
@@ -577,9 +634,9 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
         </div>
       </div>
     );
-  };
+  }, [classes]);
 
-  const renderMessages = () => {
+  const renderMessages = useCallback(() => {
     if (messagesList.length > 0) {
       const viewMessagesList = messagesList.map((message, index) => {
         const isFromMe = message.fromMe;
@@ -588,7 +645,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
             {renderDailyTimestamps(message, index)}
             {renderMessageDivider(message, index)}
             <div
-              id={`message-${message.id}`} // Adicione o ID para rolagem AQUI
+              id={`message-${message.id}`}
               className={clsx(
                 isFromMe ? classes.messageRight : classes.messageLeft,
                 {
@@ -612,7 +669,9 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
                   {message.contact?.name}
                 </span>
               )}
-              {(message.mediaUrl || message.mediaType === "location" || message.mediaType === "vcard") && checkMessageMedia(message)}
+              {(message.mediaUrl || message.mediaType === "location" || message.mediaType === "vcard") && 
+                checkMessageMedia(message)
+              }
               <div className={clsx(classes.textContentItem, {
                 [classes.textContentItemDeleted]: message.isDeleted,
               })}>
@@ -638,7 +697,17 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
     } else {
       return <div>Say hello to your new contact!</div>;
     }
-  };
+  }, [
+    messagesList,
+    renderDailyTimestamps,
+    renderMessageDivider,
+    classes,
+    isGroup,
+    checkMessageMedia,
+    renderQuotedMessage,
+    renderMessageAck,
+    handleOpenMessageOptionsMenu
+  ]);
 
   return (
     <div className={classes.messagesListWrapper}>
@@ -652,7 +721,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
         id="messagesList"
         className={classes.messagesList}
         onScroll={handleScroll}
-        ref={messagesListContainerRef} // Atribua a referência aqui
+        ref={messagesListContainerRef}
       >
         {messagesList.length > 0 ? renderMessages() : []}
         {loading && (
