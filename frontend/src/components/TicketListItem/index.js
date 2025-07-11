@@ -235,6 +235,8 @@ const TicketListItem = ({ ticket }) => {
 							<Badge
 								className={classes.newMessagesCount}
 								badgeContent={ticket.unreadMessages}
+								// CORREÇÃO: A propriedade "overlap" foi adicionada para corrigir o aviso de depreciação.
+								overlap="rectangular"
 								classes={{
 									badge: classes.badgeStyle,
 								}}
