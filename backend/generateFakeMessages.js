@@ -1,11 +1,127 @@
 const { Sequelize, DataTypes } = require("sequelize");
 const dotenv = require("dotenv");
-const { faker } = require("@faker-js/faker"); // Usaremos a biblioteca Faker para dados aleatórios
+const { faker } = require("@faker-js/faker");
 
 // Carrega as variáveis de ambiente do seu .env
 dotenv.config({ path: "./.env" });
 
-// Configurações do banco de dados (pode ajustar conforme seu .env)
+// Array de mensagens em português para variar o conteúdo
+const mensagensPortugues = [
+  "Olá, como você está?",
+  "Preciso falar sobre o projeto urgente",
+  "Vou enviar o documento agora mesmo",
+  "Reunião marcada para amanhã às 14h",
+  "Obrigado pela informação detalhada",
+  "Podemos conversar sobre isso?",
+  "Estou enviando o relatório por email",
+  "Confirmado para segunda-feira",
+  "Perfeito, vamos seguir com o plano",
+  "Necessito de mais detalhes sobre isso",
+  "Ótima ideia, vamos implementar",
+  "Preciso verificar com a equipe primeiro",
+  "Combinado, falamos depois",
+  "Enviei a proposta por WhatsApp",
+  "Pode me ligar quando tiver tempo?",
+  "Estou no trânsito, respondo em 30 min",
+  "Documento aprovado pela diretoria",
+  "Vamos remarcar para próxima semana",
+  "Excelente trabalho da equipe",
+  "Preciso da sua aprovação para prosseguir",
+  "Sistema funcionando perfeitamente",
+  "Erro corrigido com sucesso",
+  "Deploy realizado sem problemas",
+  "Backup concluído às 23:30",
+  "Servidor respondendo normalmente",
+  "Banco de dados otimizado",
+  "Performance melhorou 50%",
+  "Teste de integração passou",
+  "Code review agendado para hoje",
+  "Pull request aprovado",
+  "Feature pronta para produção",
+  "Bug corrigido na versão 2.1",
+  "Documentação atualizada",
+  "API funcionando perfeitamente",
+  "Frontend responsivo implementado",
+  "Backend escalável desenvolvido",
+  "Database indexado corretamente",
+  "Query otimizada executando em 0.2s",
+  "Cache implementado com Redis",
+  "Monitoramento ativo 24/7",
+  "Bom dia! Como posso ajudar?",
+  "Boa tarde, preciso de suporte",
+  "Boa noite, até amanhã",
+  "Parabéns pelo excelente resultado",
+  "Obrigado pela dedicação do time",
+  "Projeto entregue dentro do prazo",
+  "Cliente muito satisfeito com entrega",
+  "Próxima sprint começa segunda",
+  "Retrospectiva marcada para sexta",
+  "Daily às 9h todos os dias",
+  "Planning poker na quarta-feira",
+  "Estimativa: 8 story points",
+  "Sprint review confirmada",
+  "Impedimento removido com sucesso",
+  "Velocity da equipe aumentou",
+  "Burndown chart atualizado",
+  "Backlog priorizado pelo PO",
+  "User story refinada",
+  "Acceptance criteria definido",
+  "Definition of done revisado",
+  "Arquitetura aprovada pelos seniors",
+  "Code smell removido",
+  "Refactoring necessário no módulo X",
+  "Unit tests cobrindo 95% do código",
+  "Integration tests passando",
+  "E2E tests automatizados",
+  "CI/CD pipeline funcionando",
+  "Deployment automatizado configurado",
+  "Rollback realizado com sucesso",
+  "Hotfix aplicado em produção",
+  "Monitoring alerts configurados",
+  "Logs centralizados implementados",
+  "Métricas de negócio coletadas",
+  "Dashboard atualizado em tempo real",
+  "Relatório gerado automaticamente",
+  "Backup incremental executado",
+  "Disaster recovery testado",
+  "Security scan passou",
+  "Vulnerabilities corrigidas",
+  "Penetration test agendado",
+  "Compliance LGPD verificado",
+  "Auditoria de segurança aprovada",
+  "Certificado SSL renovado",
+  "HTTPS implementado em todos endpoints",
+  "Rate limiting configurado",
+  "Load balancer distribuindo requisições",
+  "Auto scaling funcionando",
+  "Infrastructure as code implementado",
+  "Terraform aplicado com sucesso",
+  "Kubernetes cluster estável",
+  "Docker images otimizadas",
+  "Microservices comunicando bem",
+  "Event sourcing implementado",
+  "CQRS pattern aplicado",
+  "Domain driven design seguido",
+  "Clean architecture implementada",
+  "SOLID principles aplicados",
+  "Design patterns utilizados corretamente",
+  "Código limpo e legível",
+  "Documentação técnica atualizada",
+  "README.md completo",
+  "Changelog mantido atualizado",
+  "Versioning semântico seguido",
+  "Git flow implementado",
+  "Branch protection rules ativas",
+  "Code owners definidos",
+  "Pull request template criado",
+  "Issue templates configurados",
+  "GitHub Actions configuradas",
+  "Sonarqube análise passou",
+  "Code coverage acima de 80%",
+  "Technical debt baixo"
+];
+
+// Configurações do banco de dados
 const sequelize = new Sequelize(
   process.env.DB_NAME,
   process.env.DB_USER,
@@ -14,11 +130,11 @@ const sequelize = new Sequelize(
     host: process.env.DB_HOST,
     dialect: process.env.DB_DIALECT,
     port: process.env.DB_PORT,
-    logging: false // Desativa os logs do Sequelize para não poluir o console
+    logging: false
   }
 );
 
-// --- Modelos Simplificados (Apenas o essencial para as mensagens) ---
+// --- Modelos Simplificados ---
 const Contact = sequelize.define("Contact", {
   id: {
     type: DataTypes.INTEGER,
@@ -39,10 +155,6 @@ const Contact = sequelize.define("Contact", {
     defaultValue: false
   },
   profilePicUrl: DataTypes.STRING
-  // tenantId: { // <--- REMOVIDO
-  //   type: DataTypes.INTEGER,
-  //   defaultValue: 1
-  // }
 });
 
 const Ticket = sequelize.define("Ticket", {
@@ -70,17 +182,13 @@ const Ticket = sequelize.define("Ticket", {
   },
   userId: {
     type: DataTypes.INTEGER,
-    allowNull: true // Pode ser nulo se não atribuído
+    allowNull: true
   }
-  // tenantId: { // <--- REMOVIDO
-  //   type: DataTypes.INTEGER,
-  //   defaultValue: 1
-  // }
 });
 
 const Message = sequelize.define("Message", {
   id: {
-    type: DataTypes.STRING, // No Whaticket o ID da mensagem pode ser string (ex: remoteJid_id)
+    type: DataTypes.STRING,
     primaryKey: true
   },
   body: {
@@ -91,13 +199,6 @@ const Message = sequelize.define("Message", {
     type: DataTypes.BOOLEAN,
     defaultValue: false
   },
-  // Removendo campos que podem não existir em todas as versões do Whaticket ou que não são essenciais para o teste de busca
-  // read: {
-  //   type: DataTypes.BOOLEAN,
-  //   defaultValue: false
-  // },
-  // mediaUrl: DataTypes.STRING,
-  // mediaType: DataTypes.STRING,
   ticketId: {
     type: DataTypes.INTEGER,
     allowNull: false
@@ -105,31 +206,7 @@ const Message = sequelize.define("Message", {
   contactId: {
     type: DataTypes.INTEGER,
     allowNull: false
-  },
-  // fromMe: { // <--- REMOVIDO (DUPLICADO)
-  //   type: DataTypes.BOOLEAN,
-  //   defaultValue: false
-  // },
-  // quotedMsgId: DataTypes.STRING,
-  // scheduleId: DataTypes.INTEGER,
-  // status: { // <--- REMOVIDO (CAUSANDO ERRO 'Unknown column status')
-  //   type: DataTypes.STRING,
-  //   defaultValue: "sended"
-  // },
-  // isDeleted: {
-  //   type: DataTypes.BOOLEAN,
-  //   defaultValue: false
-  // },
-  // ack: {
-  //   type: DataTypes.INTEGER,
-  //   defaultValue: 0
-  // },
-  // queueId: DataTypes.INTEGER,
-  // userId: DataTypes.INTEGER
-  // tenantId: { // <--- REMOVIDO
-  //   type: DataTypes.INTEGER,
-  //   defaultValue: 1
-  // }
+  }
 });
 
 // Associações
@@ -137,30 +214,47 @@ Ticket.belongsTo(Contact, { foreignKey: "contactId" });
 Message.belongsTo(Ticket, { foreignKey: "ticketId" });
 Message.belongsTo(Contact, { foreignKey: "contactId" });
 
+// Função para gerar mensagem em português
+function gerarMensagemPortugues() {
+  const random = Math.random();
+  
+  if (random < 0.7) {
+    // 70% das vezes usa mensagens do array
+    return mensagensPortugues[Math.floor(Math.random() * mensagensPortugues.length)];
+  } else if (random < 0.9) {
+    // 20% das vezes combina duas mensagens
+    const msg1 = mensagensPortugues[Math.floor(Math.random() * mensagensPortugues.length)];
+    const msg2 = mensagensPortugues[Math.floor(Math.random() * mensagensPortugues.length)];
+    return `${msg1} ${msg2}`;
+  } else {
+    // 10% das vezes adiciona variações
+    const msg = mensagensPortugues[Math.floor(Math.random() * mensagensPortugues.length)];
+    const variacao = Math.floor(Math.random() * 1000);
+    return `${msg} #${variacao}`;
+  }
+}
+
 // --- Geração de Dados ---
-const NUM_MESSAGES = 100; // <--- ALTERADO PARA 100 MENSAGENS
-const BATCH_SIZE = 100; // O BATCH_SIZE pode ser 100 ou menor que NUM_MESSAGES
+const NUM_MESSAGES = 1000;  // 1000 mensagens por execução
+const BATCH_SIZE = 1000;
 
 async function generateFakeData() {
   try {
     await sequelize.authenticate();
     console.log("Conexão com o banco de dados estabelecida com sucesso.");
 
-    // Sincroniza os modelos (cria as tabelas se não existirem)
-    // CUIDADO: Isso pode apagar dados existentes se force: true for usado.
-    // Como você já tem as tabelas via migração, não usaremos force: true.
     await Contact.sync();
     await Ticket.sync();
     await Message.sync();
     console.log("Modelos sincronizados.");
 
-    // 1. Criar um Contacto de teste se não existir
+    // 1. Criar Contato de teste
     let testContact = await Contact.findOne({
       where: { number: "5511999999999" }
     });
     if (!testContact) {
       testContact = await Contact.create({
-        name: "Cliente Teste Milhões",
+        name: "Cliente Teste Performance",
         number: "5511999999999",
         createdAt: new Date(),
         updatedAt: new Date()
@@ -170,7 +264,7 @@ async function generateFakeData() {
       console.log("Contato de teste já existe.");
     }
 
-    // 2. Criar um Ticket de teste se não existir
+    // 2. Criar Ticket de teste
     let testTicket = await Ticket.findOne({
       where: { contactId: testContact.id }
     });
@@ -187,15 +281,11 @@ async function generateFakeData() {
       console.log("Ticket de teste já existe.");
     }
 
-    
-    console.log(
-      `Gerando ${NUM_MESSAGES} mensagens para o ticket ${testTicket.id}...`
-    );
+    console.log(`Gerando ${NUM_MESSAGES} mensagens em português para o ticket ${testTicket.id}...`);
 
     for (let i = 0; i < NUM_MESSAGES; i += BATCH_SIZE) {
       const messagesBatch = [];
       for (let j = 0; j < BATCH_SIZE; j++) {
-        
         if (i + j >= NUM_MESSAGES) break;
 
         const timestamp = faker.date.between({
@@ -203,9 +293,7 @@ async function generateFakeData() {
           to: "2024-12-31T23:59:59.000Z"
         });
         const fromMe = faker.datatype.boolean();
-        const messageBody = faker.lorem.sentences(
-          faker.number.int({ min: 1, max: 3 })
-        ); 
+        const messageBody = gerarMensagemPortugues(); // Usando função personalizada
         const messageId = `${testTicket.id}_${faker.string.uuid()}`; 
 
         messagesBatch.push({
@@ -222,14 +310,26 @@ async function generateFakeData() {
       if (messagesBatch.length > 0) {
         await Message.bulkCreate(messagesBatch, { ignoreDuplicates: true });
         console.log(
-          `Inserido lote de ${messagesBatch.length} mensagens. Total: ${
+          `Inserido lote de ${messagesBatch.length} mensagens em português. Total: ${
             i + messagesBatch.length
           }/${NUM_MESSAGES}`
         );
       }
     }
 
-    console.log(`Geração de ${NUM_MESSAGES} mensagens concluída!`);
+    console.log(`Geração de ${NUM_MESSAGES} mensagens em português concluída!`);
+    
+    // Exibe algumas mensagens de exemplo
+    const exemplos = await Message.findAll({
+      limit: 5,
+      order: [['createdAt', 'DESC']]
+    });
+    
+    console.log("\n--- Exemplos de mensagens criadas ---");
+    exemplos.forEach((msg, index) => {
+      console.log(`${index + 1}. ${msg.body}`);
+    });
+    
   } catch (error) {
     console.error("Erro ao gerar dados falsos:", error);
   } finally {
