@@ -1,6 +1,3 @@
-// frontend/src/components/TicketsManager/index.js
-// CORREÇÃO: Badge overlap warning e outros ajustes
-
 import React, { useContext, useEffect, useRef, useState } from "react";
 import { makeStyles } from "@material-ui/core/styles";
 import Paper from "@material-ui/core/Paper";
@@ -98,7 +95,6 @@ const TicketsManager = () => {
         if (user.profile.toUpperCase() === "ADMIN") {
             setShowAllTickets(true);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {

@@ -178,7 +178,7 @@ async function generateFakeData() {
       testTicket = await Ticket.create({
         status: "open",
         contactId: testContact.id,
-        userId: 1, // Assumindo um userId padrão (admin)
+        userId: 1, 
         createdAt: new Date(),
         updatedAt: new Date()
       });
@@ -187,7 +187,7 @@ async function generateFakeData() {
       console.log("Ticket de teste já existe.");
     }
 
-    // 3. Gerar e inserir mensagens em lotes
+    
     console.log(
       `Gerando ${NUM_MESSAGES} mensagens para o ticket ${testTicket.id}...`
     );
@@ -195,7 +195,7 @@ async function generateFakeData() {
     for (let i = 0; i < NUM_MESSAGES; i += BATCH_SIZE) {
       const messagesBatch = [];
       for (let j = 0; j < BATCH_SIZE; j++) {
-        // Garantindo que não exceda NUM_MESSAGES
+        
         if (i + j >= NUM_MESSAGES) break;
 
         const timestamp = faker.date.between({
@@ -205,8 +205,8 @@ async function generateFakeData() {
         const fromMe = faker.datatype.boolean();
         const messageBody = faker.lorem.sentences(
           faker.number.int({ min: 1, max: 3 })
-        ); // 1 a 3 frases
-        const messageId = `${testTicket.id}_${faker.string.uuid()}`; // ID único baseado no ticket
+        ); 
+        const messageId = `${testTicket.id}_${faker.string.uuid()}`; 
 
         messagesBatch.push({
           id: messageId,
@@ -238,5 +238,4 @@ async function generateFakeData() {
   }
 }
 
-// Executa a função
 generateFakeData();

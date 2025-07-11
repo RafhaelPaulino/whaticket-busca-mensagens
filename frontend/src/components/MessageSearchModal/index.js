@@ -22,9 +22,10 @@ import {
     Tooltip,
     Badge,
     DialogActions,
-    Button
+    Button,
+    useMediaQuery
 } from "@material-ui/core";
-import { makeStyles } from "@material-ui/core/styles";
+import { makeStyles, useTheme } from "@material-ui/core/styles";
 import { 
     Close, 
     Search, 
@@ -163,7 +164,7 @@ const useStyles = makeStyles((theme) => ({
     }
 }));
 
-// Componente para o Modal de Filtros
+
 const FilterModal = ({ open, onClose, initialFilters, onApplyFilters }) => {
     const [localFilters, setLocalFilters] = useState(initialFilters);
 
@@ -261,6 +262,8 @@ const FilterModal = ({ open, onClose, initialFilters, onApplyFilters }) => {
 
 const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) => {
     const classes = useStyles();
+    const theme = useTheme();
+    const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -467,6 +470,7 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
                 className={classes.dialog}
                 fullWidth
                 maxWidth={false}
+                fullScreen={isMobile}
             >
                 <DialogTitle className={classes.dialogTitle}>
                     <Box display="flex" alignItems="center">

@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useContext } from "react";
 import { useHistory } from "react-router-dom";
 import { format } from "date-fns";
@@ -91,7 +90,6 @@ const NotificationsPopOver = () => {
     ticketIdRef.current = ticketIdUrl;
   }, [ticketIdUrl]);
 
-  // CORREÇÃO: Cleanup melhorado para WebSocket
   useEffect(() => {
     const socket = openSocket();
 
@@ -149,7 +147,6 @@ const NotificationsPopOver = () => {
       }
     });
 
-    // CORREÇÃO: Cleanup adequado
     return () => {
       socket.off("connect");
       socket.off("ticket");

@@ -1,6 +1,3 @@
-// frontend/src/components/MessagesList/index.js
-// CORREÇÃO COMPLETA: Âncora, memory leaks, cleanup e performance
-
 import React, { useState, useEffect, useReducer, useRef, useCallback } from "react";
 import { isSameDay, parseISO, format } from "date-fns";
 import openSocket from "../../services/socket-io";
@@ -347,7 +344,6 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 		};
 	}, []);
 
-	// CORREÇÃO: Lógica para encontrar a mensagem que evita o loop infinito
 	useEffect(() => {
 		if (messageToScrollToId) {
 			const messageExists = messagesList.some(m => m.id === messageToScrollToId);
@@ -357,7 +353,6 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 				setFindingMessage(messageToScrollToId);
 			}
 		}
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [messageToScrollToId]);
 
 	useEffect(() => {

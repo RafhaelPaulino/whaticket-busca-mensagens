@@ -1,6 +1,3 @@
-// frontend/src/App.js
-// CORREÇÃO: Inicialização robusta com error boundary
-
 import React, { useState, useEffect } from "react";
 import Routes from "./routes";
 import "react-toastify/dist/ReactToastify.css";
@@ -8,7 +5,6 @@ import "react-toastify/dist/ReactToastify.css";
 import { createTheme, ThemeProvider } from "@material-ui/core/styles";
 import { ptBR } from "@material-ui/core/locale";
 
-// CORREÇÃO: Error Boundary para capturar erros
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -83,7 +79,6 @@ const App = () => {
 
   useEffect(() => {
     try {
-      // CORREÇÃO: Verificação mais robusta do localStorage
       const i18nlocale = localStorage.getItem("i18nextLng") || "pt-BR";
       const browserLocale = i18nlocale.substring(0, 2) + i18nlocale.substring(3, 5);
 
@@ -91,15 +86,12 @@ const App = () => {
         setLocale(ptBR);
       }
 
-      // CORREÇÃO: Definir como pronto após inicialização
       setIsReady(true);
     } catch (error) {
       console.error("Erro na inicialização do App:", error);
-      setIsReady(true); // Continuar mesmo com erro
+      setIsReady(true);
     }
   }, []);
-
-  // CORREÇÃO: Aguardar inicialização completa
   if (!isReady) {
     return (
       <div style={{

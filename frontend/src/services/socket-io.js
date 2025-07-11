@@ -1,6 +1,3 @@
-// frontend/src/services/socket-io.js
-// CORREÇÃO: WebSocket connection stability
-
 import openSocket from "socket.io-client";
 import { getBackendUrl } from "../config";
 
@@ -10,7 +7,6 @@ const maxConnectionAttempts = 5;
 const reconnectInterval = 3000;
 
 function connectToSocket() {
-  // Reutilizar conexão existente se estiver ativa
   if (socketInstance && socketInstance.connected) {
     return socketInstance;
   }
@@ -19,7 +15,6 @@ function connectToSocket() {
   
   if (!token) {
     console.warn("Token não encontrado para conexão Socket.IO");
-    // CORREÇÃO: Retornar um objeto mock para evitar erros de .on()
     return {
       on: () => {},
       off: () => {},
@@ -32,7 +27,6 @@ function connectToSocket() {
   try {
     const parsedToken = JSON.parse(token);
     
-    // CORREÇÃO: Configuração robusta do Socket.IO
     socketInstance = openSocket(getBackendUrl(), {
       transports: ["websocket", "polling"],
       timeout: 20000,
@@ -46,7 +40,6 @@ function connectToSocket() {
       },
     });
 
-    // Event listeners para debugging e estabilidade
     socketInstance.on("connect", () => {
       console.log("✅ Socket.IO conectado:", socketInstance.id);
       connectionAttempts = 0;
@@ -55,9 +48,7 @@ function connectToSocket() {
     socketInstance.on("disconnect", (reason) => {
       console.log("🔌 Socket.IO desconectado:", reason);
       
-      // Reconectar automaticamente em casos específicos
       if (reason === "io server disconnect") {
-        // Server forçou desconexão - reconectar manualmente
         socketInstance.connect();
       }
     });
@@ -66,7 +57,6 @@ function connectToSocket() {
       connectionAttempts++;
       console.error(`❌ Erro conexão Socket.IO (tentativa ${connectionAttempts}):`, error.message);
       
-      // Se token inválido, limpar e redirecionar
       if (error.message.includes("401") || error.message.includes("unauthorized")) {
         console.warn("Token inválido - limpando localStorage");
         localStorage.removeItem("token");
@@ -74,7 +64,6 @@ function connectToSocket() {
         return;
       }
       
-      // Limite de tentativas atingido
       if (connectionAttempts >= maxConnectionAttempts) {
         console.error("Limite de tentativas de conexão atingido");
         socketInstance.disconnect();
@@ -90,7 +79,6 @@ function connectToSocket() {
       console.error("❌ Erro na reconexão Socket.IO:", error.message);
     });
 
-    // Eventos customizados da aplicação
     socketInstance.on("user", (data) => {
       console.log("👤 Evento user recebido:", data.action);
     });
@@ -111,7 +99,6 @@ function connectToSocket() {
   }
 }
 
-// Função para desconectar graciosamente
 export function disconnectSocket() {
   if (socketInstance) {
     socketInstance.removeAllListeners();
@@ -121,12 +108,10 @@ export function disconnectSocket() {
   }
 }
 
-// Função para verificar status da conexão
 export function isSocketConnected() {
   return socketInstance && socketInstance.connected;
 }
 
-// Função para forçar reconexão
 export function reconnectSocket() {
   if (socketInstance) {
     disconnectSocket();
