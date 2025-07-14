@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useHistory } from "react-router-dom";
 
 import { toast } from "react-toastify";
@@ -84,26 +84,32 @@ const Ticket = () => {
   const [ticket, setTicket] = useState({});
   const [messageToScrollToId, setMessageToScrollToId] = useState(null);
 
+  // ✅ OTIMIZAÇÃO: Fetch de ticket mais eficiente
   useEffect(() => {
-    setLoading(true);
-    const delayDebounceFn = setTimeout(() => {
-      const fetchTicket = async () => {
-        try {
-          const { data } = await api.get("/tickets/" + ticketId);
-
-          setContact(data.contact);
-          setTicket(data);
-          setLoading(false);
-        } catch (err) {
-          setLoading(false);
-          toastError(err);
+    const fetchTicket = async () => {
+      if (!ticketId) return;
+      
+      setLoading(true);
+      try {
+        const { data } = await api.get(`/tickets/${ticketId}`);
+        setContact(data.contact);
+        setTicket(data);
+      } catch (err) {
+        toastError(err);
+        // Se o ticket não existe, redireciona
+        if (err.response?.status === 404) {
+          history.push("/tickets");
         }
-      };
-      fetchTicket();
-    }, 500);
-    return () => clearTimeout(delayDebounceFn);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // ✅ OTIMIZAÇÃO: Remove debounce desnecessário
+    fetchTicket();
   }, [ticketId, history]);
 
+  // ✅ SOCKET LISTENERS OTIMIZADOS
   useEffect(() => {
     const socket = openSocket();
 
@@ -136,17 +142,29 @@ const Ticket = () => {
     };
   }, [ticketId, history]);
 
-  const handleDrawerOpen = () => {
+  const handleDrawerOpen = useCallback(() => {
     setDrawerOpen(true);
-  };
+  }, []);
 
-  const handleDrawerClose = () => {
+  const handleDrawerClose = useCallback(() => {
     setDrawerOpen(false);
-  };
+  }, []);
 
-  const handleNavigateToMessage = (messageId) => {
-    setMessageToScrollToId(messageId);
-  };
+  // ✅ FUNÇÃO CRÍTICA OTIMIZADA: Navegação rápida para mensagem
+  const handleNavigateToMessage = useCallback((messageId) => {
+    // ✅ SOLUÇÃO PRINCIPAL: Limpa navegação anterior e define nova
+    setMessageToScrollToId(null);
+    
+    // Pequeno timeout para garantir que o estado foi limpo
+    setTimeout(() => {
+      setMessageToScrollToId(messageId);
+    }, 50);
+  }, []);
+
+  // ✅ OTIMIZAÇÃO: Limpa messageToScrollToId quando muda de ticket
+  useEffect(() => {
+    setMessageToScrollToId(null);
+  }, [ticketId]);
 
   return (
     <div className={classes.root} id="drawer-container">
@@ -173,11 +191,12 @@ const Ticket = () => {
           </div>
         </TicketHeader>
         <ReplyMessageProvider>
+          {/* ✅ COMPONENTE PRINCIPAL OTIMIZADO */}
           <MessagesList
             ticketId={ticketId}
             isGroup={ticket.isGroup}
             messageToScrollToId={messageToScrollToId}
-          ></MessagesList>
+          />
           <MessageInput ticketStatus={ticket.status} />
         </ReplyMessageProvider>
       </Paper>

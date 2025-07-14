@@ -14,32 +14,23 @@ import {
     Divider,
     Chip,
     InputAdornment,
-    FormControl,
-    Select,
-    MenuItem,
-    InputLabel,
     Grid,
-    Tooltip,
-    Badge,
-    DialogActions,
-    Button,
     useMediaQuery
 } from "@material-ui/core";
 import { makeStyles, useTheme } from "@material-ui/core/styles";
 import { 
     Close, 
     Search, 
-    FilterList, 
-    Clear,
     Image,
     Audiotrack,
     VideoLibrary,
     Description,
     Message,
-    Person
+    Person,
+    Navigation
 } from "@material-ui/icons";
 import { debounce } from "lodash";
-import { format, parseISO, startOfDay, endOfDay } from "date-fns";
+import { format, parseISO } from "date-fns";
 import api from "../../services/api";
 
 const useStyles = makeStyles((theme) => ({
@@ -122,9 +113,6 @@ const useStyles = makeStyles((theme) => ({
         padding: theme.spacing(4),
         color: theme.palette.text.secondary,
     },
-    filterToggle: {
-        marginLeft: theme.spacing(1),
-    },
     messagePreview: {
         maxWidth: "100%",
         overflow: "hidden",
@@ -161,103 +149,29 @@ const useStyles = makeStyles((theme) => ({
         fontSize: "0.8rem",
         color: theme.palette.text.secondary,
         marginTop: theme.spacing(1),
+    },
+    navigationIcon: {
+        color: theme.palette.primary.main,
+        marginLeft: theme.spacing(1),
+        animation: '$pulse 1.5s ease-in-out infinite',
+    },
+    '@keyframes pulse': {
+        '0%': { opacity: 0.6 },
+        '50%': { opacity: 1 },
+        '100%': { opacity: 0.6 },
+    },
+    performanceIndicator: {
+        position: "absolute",
+        top: theme.spacing(1),
+        right: theme.spacing(1),
+        background: theme.palette.success.main,
+        color: "white",
+        padding: theme.spacing(0.5, 1),
+        borderRadius: 12,
+        fontSize: "0.7rem",
+        fontWeight: "bold",
     }
 }));
-
-const FilterModal = ({ open, onClose, initialFilters, onApplyFilters }) => {
-    const [localFilters, setLocalFilters] = useState(initialFilters);
-
-    useEffect(() => {
-        setLocalFilters(initialFilters);
-    }, [initialFilters, open]);
-
-    const handleFilterChange = (filterName, value) => {
-        setLocalFilters(prev => ({ ...prev, [filterName]: value }));
-    };
-
-    const handleApply = () => {
-        onApplyFilters(localFilters);
-        onClose();
-    };
-
-    const handleClear = () => {
-        const clearedFilters = {
-            dateFrom: "",
-            dateTo: "",
-            fromMe: "all",
-            mediaType: "all",
-        };
-        setLocalFilters(clearedFilters);
-    };
-
-    return (
-        <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-            <DialogTitle>Filtros Avançados</DialogTitle>
-            <DialogContent>
-                <Grid container spacing={2} style={{ marginTop: 8 }}>
-                    <Grid item xs={12} sm={6}>
-                        <TextField
-                            label="Data Inicial"
-                            type="date"
-                            value={localFilters.dateFrom}
-                            onChange={(e) => handleFilterChange("dateFrom", e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                            fullWidth
-                            variant="outlined"
-                        />
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                        <TextField
-                            label="Data Final"
-                            type="date"
-                            value={localFilters.dateTo}
-                            onChange={(e) => handleFilterChange("dateTo", e.target.value)}
-                            InputLabelProps={{ shrink: true }}
-                            fullWidth
-                            variant="outlined"
-                        />
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                        <FormControl fullWidth variant="outlined">
-                            <InputLabel>Remetente</InputLabel>
-                            <Select
-                                value={localFilters.fromMe}
-                                onChange={(e) => handleFilterChange("fromMe", e.target.value)}
-                                label="Remetente"
-                            >
-                                <MenuItem value="all">Todos</MenuItem>
-                                <MenuItem value="true">Apenas Você</MenuItem>
-                                <MenuItem value="false">Apenas Cliente</MenuItem>
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                    <Grid item xs={12} sm={6}>
-                        <FormControl fullWidth variant="outlined">
-                            <InputLabel>Tipo</InputLabel>
-                            <Select
-                                value={localFilters.mediaType}
-                                onChange={(e) => handleFilterChange("mediaType", e.target.value)}
-                                label="Tipo"
-                            >
-                                <MenuItem value="all">Todos</MenuItem>
-                                <MenuItem value="text">Texto</MenuItem>
-                                <MenuItem value="image">Imagem</MenuItem>
-                                <MenuItem value="audio">Áudio</MenuItem>
-                                <MenuItem value="video">Vídeo</MenuItem>
-                                <MenuItem value="document">Documento</MenuItem>
-                            </Select>
-                        </FormControl>
-                    </Grid>
-                </Grid>
-            </DialogContent>
-            <DialogActions>
-                <Button onClick={onClose}>Cancelar</Button>
-                <Button onClick={handleClear}>Limpar</Button>
-                <Button onClick={handleApply} color="primary" variant="contained">Aplicar</Button>
-            </DialogActions>
-        </Dialog>
-    );
-};
 
 const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) => {
     const classes = useStyles();
@@ -268,17 +182,11 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
     const [loading, setLoading] = useState(false);
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
-    
-    const [filters, setFilters] = useState({
-        dateFrom: "",
-        dateTo: "",
-        fromMe: "all",
-        mediaType: "all",
-    });
+    const [searchDuration, setSearchDuration] = useState(null);
 
     const searchInputRef = useRef(null);
 
-    // Cache otimizado para melhor performance
+    // ✅ CACHE OTIMIZADO
     const [searchCache] = useState(() => new Map());
 
     const normalizeText = (text) => {
@@ -313,14 +221,13 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
         );
     };
     
-    // FUNÇÃO OTIMIZADA DE BUSCA COM CACHE
-    const performSearch = useCallback(async (query, searchFilters, pageNum) => {
+    // ✅ FUNÇÃO OTIMIZADA DE BUSCA
+    const performSearch = useCallback(async (query, pageNum) => {
         if (!query || query.length < 2) return;
 
-        // Criar chave de cache
-        const cacheKey = `${ticketId}-${query}-${JSON.stringify(searchFilters)}-${pageNum}`;
+        const startTime = performance.now();
+        const cacheKey = `${ticketId}-${query}-${pageNum}`;
         
-        // Verificar cache primeiro
         if (searchCache.has(cacheKey)) {
             const cachedResult = searchCache.get(cacheKey);
             if (pageNum === 1) {
@@ -329,6 +236,8 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
                 setSearchResults(prev => [...prev, ...(cachedResult.messages || [])]);
             }
             setHasMore(cachedResult.hasMore);
+            const endTime = performance.now();
+            setSearchDuration(endTime - startTime);
             return;
         }
 
@@ -341,31 +250,14 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
                 limit: 40,
             };
 
-            if (searchFilters.dateFrom) {
-                params.dateFrom = startOfDay(parseISO(searchFilters.dateFrom)).toISOString();
-            }
-            if (searchFilters.dateTo) {
-                params.dateTo = endOfDay(parseISO(searchFilters.dateTo)).toISOString();
-            }
-
-            if (searchFilters.fromMe !== "all") {
-                params.fromMe = searchFilters.fromMe === "true";
-            }
-
-            if (searchFilters.mediaType !== "all") {
-                params.mediaType = searchFilters.mediaType;
-            }
-
             const { data } = await api.get(`/messages/search/${ticketId}`, { params });
 
-            // Armazenar no cache
             searchCache.set(cacheKey, {
                 messages: data.messages || [],
                 total: data.total || data.count || data.messages?.length || 0,
                 hasMore: data.hasMore
             });
 
-            // Limitar cache a 50 entradas para não consumir muita memória
             if (searchCache.size > 50) {
                 const firstKey = searchCache.keys().next().value;
                 searchCache.delete(firstKey);
@@ -378,6 +270,10 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
             }
             
             setHasMore(data.hasMore);
+            
+            const endTime = performance.now();
+            setSearchDuration(endTime - startTime);
+            
         } catch (error) {
             console.error("Erro na busca de mensagens:", error);
             setSearchResults([]);
@@ -387,26 +283,27 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
         }
     }, [ticketId, searchCache]);
 
-    // DEBOUNCE OTIMIZADO - Reduzido para 800ms para melhor responsividade
+    // ✅ DEBOUNCE OTIMIZADO
     const debouncedSearch = useMemo(
-        () => debounce((query, currentFilters) => {
+        () => debounce((query) => {
             if (query.length >= 2) {
                 setPage(1);
                 setSearchResults([]);
                 setHasMore(true);
-                performSearch(query, currentFilters, 1);
+                performSearch(query, 1);
             } else {
                 setSearchResults([]);
                 setHasMore(true);
+                setSearchDuration(null);
             }
-        }, 800), // Reduzido de 1000ms para 800ms
+        }, 600),
         [performSearch] 
     );
 
     useEffect(() => {
-        debouncedSearch(searchQuery, filters);
+        debouncedSearch(searchQuery);
         return () => debouncedSearch.cancel();
-    }, [searchQuery, filters, debouncedSearch]);
+    }, [searchQuery, debouncedSearch]);
 
     useEffect(() => {
         if (!open) {
@@ -414,13 +311,7 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
             setSearchResults([]);
             setPage(1);
             setHasMore(true);
-            setFilters({
-                dateFrom: "",
-                dateTo: "",
-                fromMe: "all",
-                mediaType: "all",
-            });
-            // Limpar cache quando modal fecha para liberar memória
+            setSearchDuration(null);
             searchCache.clear();
         } else {
             setTimeout(() => {
@@ -435,27 +326,31 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
         setSearchQuery(event.target.value);
     };
 
-    const handleApplyFilters = (newFilters) => {
-        setFilters(newFilters);
-        // Limpar cache quando filtros mudam
-        searchCache.clear();
-    };
-
+    // ✅ NAVEGAÇÃO OTIMIZADA
     const handleMessageClick = (messageId) => {
         if (onNavigateToMessage) {
+            const clickedElement = document.querySelector(`[data-message-id="${messageId}"]`);
+            if (clickedElement) {
+                clickedElement.style.transform = "scale(0.98)";
+                clickedElement.style.transition = "transform 0.1s";
+                
+                setTimeout(() => {
+                    clickedElement.style.transform = "scale(1)";
+                }, 100);
+            }
+            
             onNavigateToMessage(messageId);
         }
         onClose();
     };
 
-    // SCROLL INFINITO OTIMIZADO
     const loadMoreResults = useCallback(() => {
         if (hasMore && !loading && searchQuery.length >= 2) {
             const nextPage = page + 1;
             setPage(nextPage);
-            performSearch(searchQuery, filters, nextPage);
+            performSearch(searchQuery, nextPage);
         }
-    }, [hasMore, loading, searchQuery, page, performSearch, filters]);
+    }, [hasMore, loading, searchQuery, page, performSearch]);
 
     const handleScroll = useCallback((e) => {
         const { scrollTop, scrollHeight, clientHeight } = e.target;
@@ -468,14 +363,6 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
         return format(parseISO(dateString), "dd/MM/yyyy HH:mm");
     };
 
-    const getActiveFiltersCount = () => {
-        let count = 0;
-        if (filters.dateFrom || filters.dateTo) count++;
-        if (filters.fromMe !== "all") count++;
-        if (filters.mediaType !== "all") count++;
-        return count;
-    };
-
     const getMediaTypeIcon = (mediaType) => {
         switch (mediaType) {
             case "image": return <Image className={classes.mediaTypeIcon} />;
@@ -486,7 +373,6 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
         }
     };
 
-    // ESTATÍSTICAS OTIMIZADAS COM USEMEMO
     const stats = useMemo(() => {
         if (searchResults.length === 0) return { fromMeCount: 0, fromContactCount: 0 };
         const fromMeCount = searchResults.filter(msg => msg.fromMe).length;
@@ -494,164 +380,199 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
         return { fromMeCount, fromContactCount };
     }, [searchResults]);
 
-    return (
-        <>
-            <Dialog
-                open={open}
-                onClose={onClose}
-                className={classes.dialog}
-                fullWidth
-                maxWidth={false}
-                fullScreen={isMobile}
-            >
-                <DialogTitle className={classes.dialogTitle}>
-                    <Box display="flex" alignItems="center">
-                        <Search style={{ marginRight: 8 }} />
-                        <Typography variant="h6" component="span">
-                            Busca Avançada de Mensagens
-                        </Typography>
-                    </Box>
-                    <IconButton onClick={onClose} size="small" style={{ color: 'inherit' }}>
-                        <Close />
-                    </IconButton>
-                </DialogTitle>
-
-                <div className={classes.searchContainer}>
-                    <Grid container spacing={2} alignItems="center">
-                        <Grid item xs={12}>
-                            <TextField
-                                className={classes.searchField}
-                                placeholder="Digite pelo menos 1 palavra para buscar mensagens..."
-                                value={searchQuery}
-                                onChange={handleSearchChange}
-                                inputRef={searchInputRef}
-                                InputProps={{
-                                    startAdornment: (
-                                        <InputAdornment position="start">
-                                            <Search color="action" />
-                                        </InputAdornment>
-                                    ),
-                                }}
-                                variant="outlined"
-                                fullWidth
-                            />
-                            {searchQuery.length < 2 && (
-                                <Typography className={classes.searchTips}>
-                                    <span role="img" aria-label="dica">💡</span> Dicas: digite uma palavra completa para começar a busca, exemplo: documento, relatorio...
-                                </Typography>
-                            )}
-                        </Grid>
-                    </Grid>
+    const renderPerformanceIndicator = () => {
+        if (searchDuration && searchResults.length > 0) {
+            const isVeryFast = searchDuration < 100;
+            const isFast = searchDuration < 500;
+            
+            return (
+                <div className={classes.performanceIndicator} style={{
+                    background: isVeryFast ? '#4caf50' : isFast ? '#ff9800' : '#f44336'
+                }}>
+                    ⚡ {Math.round(searchDuration)}ms
                 </div>
-                
-                <DialogContent style={{ padding: 0, display: 'flex', flexDirection: 'column' }}>
-                    {searchResults.length > 0 && !loading && (
-                        <div className={classes.searchStats}>
-                            <Grid container alignItems="center">
-                                <Grid item xs={6}>
-                                    <Typography variant="body2">
-                                        Carregadas: <strong>{searchResults.length}</strong> 
-                                    </Typography>
-                                </Grid>
-                                <Grid item xs={6} style={{ textAlign: 'right' }}>
-                                    <Typography variant="caption" display="block">
-                                        <Person fontSize="small" style={{ verticalAlign: 'middle', marginRight: 4 }} />
-                                        Você: {stats.fromMeCount}
-                                    </Typography>
-                                    <Typography variant="caption" display="block">
-                                        <Message fontSize="small" style={{ verticalAlign: 'middle', marginRight: 4 }} />
-                                        Cliente: {stats.fromContactCount}
-                                    </Typography>
-                                </Grid>
-                            </Grid>
-                        </div>
-                    )}
+            );
+        }
+        return null;
+    };
 
-                    {searchQuery.length < 2 ? (
-                        <div className={classes.emptyState}>
-                            <Search style={{ fontSize: 48, marginBottom: 16, opacity: 0.3 }} />
-                            <Typography variant="h6" gutterBottom>
-                                Busca Inteligente de Mensagens
+    return (
+        <Dialog
+            open={open}
+            onClose={onClose}
+            className={classes.dialog}
+            fullWidth
+            maxWidth={false}
+            fullScreen={isMobile}
+        >
+            <DialogTitle className={classes.dialogTitle}>
+                <Box display="flex" alignItems="center">
+                    <Search style={{ marginRight: 8 }} />
+                    <Typography variant="h6" component="span">
+                        Busca Avançada de Mensagens
+                    </Typography>
+                </Box>
+                {renderPerformanceIndicator()}
+                <IconButton onClick={onClose} size="small" style={{ color: 'inherit' }}>
+                    <Close />
+                </IconButton>
+            </DialogTitle>
+
+            <div className={classes.searchContainer}>
+                <Grid container spacing={2} alignItems="center">
+                    <Grid item xs={12}>
+                        <TextField
+                            className={classes.searchField}
+                            placeholder="Digite pelo menos 2 caracteres para buscar mensagens..."
+                            value={searchQuery}
+                            onChange={handleSearchChange}
+                            inputRef={searchInputRef}
+                            InputProps={{
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <Search color="action" />
+                                    </InputAdornment>
+                                ),
+                            }}
+                            variant="outlined"
+                            fullWidth
+                        />
+                        {searchQuery.length < 2 && (
+                            <Typography className={classes.searchTips}>
+                                <span role="img" aria-label="dica">💡</span> Dicas: digite uma palavra completa para começar a busca. Exemplo: "documento", "relatório", "pedido"...
                             </Typography>
-                            <Typography color="textSecondary">
-                                Digite pelo menos 1 palavra para começar a buscar
+                        )}
+                    </Grid>
+                </Grid>
+            </div>
+            
+            <DialogContent style={{ padding: 0, display: 'flex', flexDirection: 'column' }}>
+                {searchResults.length > 0 && !loading && (
+                    <div className={classes.searchStats}>
+                        <Grid container alignItems="center">
+                            <Grid item xs={6}>
+                                <Typography variant="body2">
+                                    Encontradas: <strong>{searchResults.length}</strong> mensagens
+                                    {searchDuration && (
+                                        <span style={{ marginLeft: 8, color: '#666' }}>
+                                            em {Math.round(searchDuration)}ms
+                                        </span>
+                                    )}
+                                </Typography>
+                            </Grid>
+                            <Grid item xs={6} style={{ textAlign: 'right' }}>
+                                <Typography variant="caption" display="block">
+                                    <Person fontSize="small" style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                                    Você: {stats.fromMeCount}
+                                </Typography>
+                                <Typography variant="caption" display="block">
+                                    <Message fontSize="small" style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                                    Cliente: {stats.fromContactCount}
+                                </Typography>
+                            </Grid>
+                        </Grid>
+                    </div>
+                )}
+
+                {searchQuery.length < 2 ? (
+                    <div className={classes.emptyState}>
+                        <Search style={{ fontSize: 48, marginBottom: 16, opacity: 0.3 }} />
+                        <Typography variant="h6" gutterBottom>
+                            Busca Inteligente de Mensagens
+                        </Typography>
+                        <Typography color="textSecondary">
+                            Digite pelo menos 2 caracteres para começar a buscar
+                        </Typography>
+                        <Box mt={2}>
+                            <Typography variant="body2" color="textSecondary">
+                                <span role="img" aria-label="star">✨</span> Busca otimizada com contexto inteligente
                             </Typography>
-                        </div>
-                    ) : loading && searchResults.length === 0 ? (
-                    <div className={classes.loadingContainer}>
-                        <CircularProgress />
-                        <Typography style={{ marginLeft: 16 }}>
-                            Buscando mensagens...
+                            <Typography variant="body2" color="textSecondary">
+                                <span role="img" aria-label="rocket">🚀</span> Navegação instantânea para mensagens
+                            </Typography>
+                        </Box>
+                    </div>
+                ) : loading && searchResults.length === 0 ? (
+                <div className={classes.loadingContainer}>
+                    <CircularProgress />
+                    <Typography style={{ marginLeft: 16 }}>
+                        Buscando mensagens...
+                    </Typography>
+                </div>
+            ) : !loading && searchResults.length === 0 ? (
+                    <div className={classes.noResults}>
+                        <Typography variant="h6" gutterBottom>
+                            Nenhuma mensagem encontrada
+                        </Typography>
+                        <Typography color="textSecondary">
+                            Tente ajustar sua busca para "{searchQuery}"
                         </Typography>
                     </div>
-                ) : !loading && searchResults.length === 0 ? (
-                        <div className={classes.noResults}>
-                            <Typography variant="h6" gutterBottom>
-                                Nenhuma mensagem encontrada
-                            </Typography>
-                            <Typography color="textSecondary">
-                                Tente ajustar sua busca ou remover alguns filtros para "{searchQuery}"
-                            </Typography>
-                        </div>
-                    ) : (
-                        <List className={classes.resultsList} onScroll={handleScroll}>
-                            {searchResults.map((message, index) => (
-                                <React.Fragment key={message.id}>
-                                    <ListItem
-                                        className={classes.messageItem}
-                                        onClick={() => handleMessageClick(message.id)}
-                                    >
-                                        <ListItemText
-                                            primary={
-                                                <div className={classes.messageHeader}>
-                                                    <Box display="flex" alignItems="center">
-                                                        {getMediaTypeIcon(message.mediaType)}
-                                                        <Chip
-                                                            size="small"
-                                                            label={message.fromMe ? "Você" : "Cliente"}
-                                                            color={message.fromMe ? "primary" : "secondary"}
-                                                            className={classes.senderChip}
-                                                        />
-                                                    </Box>
-                                                    <Typography className={classes.messageDate}>
-                                                        {formatDate(message.createdAt)}
-                                                    </Typography>
-                                                </div>
-                                            }
-                                            secondaryTypographyProps={{ component: "div" }}
-                                            secondary={
-                                                <div className={classes.messagePreview}>
-                                                    <Typography component="span" className={classes.messageText}>
-                                                        {highlightText(message.body, searchQuery)}
-                                                    </Typography>
-                                                </div>
-                                            }
-                                        />
-                                    </ListItem>
-                                    {index < searchResults.length - 1 && <Divider component="li" />}
-                                </React.Fragment>
-                            ))}
-
-                            {hasMore && (
-                                <ListItem className={classes.loadMoreButton}>
-                                    {loading ? (
-                                        <CircularProgress size={24} />
-                                    ) : (
-                                        <Typography 
-                                            color="primary" 
-                                            style={{ cursor: 'pointer' }}
-                                            onClick={loadMoreResults}
-                                        >
-                                            Carregar mais resultados...
-                                        </Typography>
-                                    )}
+                ) : (
+                    <List className={classes.resultsList} onScroll={handleScroll}>
+                        {searchResults.map((message, index) => (
+                            <React.Fragment key={message.id}>
+                                <ListItem
+                                    className={classes.messageItem}
+                                    onClick={() => handleMessageClick(message.id)}
+                                    data-message-id={message.id}
+                                >
+                                    <ListItemText
+                                        primary={
+                                            <div className={classes.messageHeader}>
+                                                <Box display="flex" alignItems="center">
+                                                    {getMediaTypeIcon(message.mediaType)}
+                                                    <Chip
+                                                        size="small"
+                                                        label={message.fromMe ? "Você" : "Cliente"}
+                                                        color={message.fromMe ? "primary" : "secondary"}
+                                                        className={classes.senderChip}
+                                                    />
+                                                    <Navigation className={classes.navigationIcon} />
+                                                </Box>
+                                                <Typography className={classes.messageDate}>
+                                                    {formatDate(message.createdAt)}
+                                                </Typography>
+                                            </div>
+                                        }
+                                        secondaryTypographyProps={{ component: "div" }}
+                                        secondary={
+                                            <div className={classes.messagePreview}>
+                                                <Typography component="span" className={classes.messageText}>
+                                                    {highlightText(message.body, searchQuery)}
+                                                </Typography>
+                                            </div>
+                                        }
+                                    />
                                 </ListItem>
-                            )}
-                        </List>
-                    )}
-                </DialogContent>
-            </Dialog>
-        </>
+                                {index < searchResults.length - 1 && <Divider component="li" />}
+                            </React.Fragment>
+                        ))}
+
+                        {hasMore && (
+                            <ListItem className={classes.loadMoreButton}>
+                                {loading ? (
+                                    <Box display="flex" alignItems="center" justifyContent="center" width="100%">
+                                        <CircularProgress size={24} />
+                                        <Typography style={{ marginLeft: 16 }}>
+                                            Carregando mais...
+                                        </Typography>
+                                    </Box>
+                                ) : (
+                                    <Typography 
+                                        color="primary" 
+                                        style={{ cursor: 'pointer', textAlign: 'center', width: '100%' }}
+                                        onClick={loadMoreResults}
+                                    >
+                                        Carregar mais resultados
+                                    </Typography>
+                                )}
+                            </ListItem>
+                        )}
+                    </List>
+                )}
+            </DialogContent>
+        </Dialog>
     );
 };
 

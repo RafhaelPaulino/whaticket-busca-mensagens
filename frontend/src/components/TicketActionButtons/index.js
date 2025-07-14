@@ -5,7 +5,6 @@ import { makeStyles } from "@material-ui/core/styles";
 import { IconButton } from "@material-ui/core";
 import { MoreVert, Replay, Search } from "@material-ui/icons";
 
-
 import { i18n } from "../../translate/i18n";
 import api from "../../services/api";
 import TicketOptionsMenu from "../TicketOptionsMenu";
@@ -22,6 +21,38 @@ const useStyles = makeStyles(theme => ({
 		marginLeft: "auto",
 		"& > *": {
 			margin: theme.spacing(1),
+		},
+	},
+	// ✅ NOVO: Indicador visual para busca ativa
+	searchButton: {
+		position: "relative",
+		"&.active": {
+			backgroundColor: theme.palette.primary.light,
+			color: theme.palette.primary.contrastText,
+		}
+	},
+	searchIndicator: {
+		position: "absolute",
+		top: -2,
+		right: -2,
+		width: 8,
+		height: 8,
+		borderRadius: "50%",
+		backgroundColor: theme.palette.secondary.main,
+		animation: '$pulse 2s infinite',
+	},
+	'@keyframes pulse': {
+		'0%': {
+			transform: 'scale(0.95)',
+			boxShadow: '0 0 0 0 rgba(255, 152, 0, 0.7)',
+		},
+		'70%': {
+			transform: 'scale(1)',
+			boxShadow: '0 0 0 10px rgba(255, 152, 0, 0)',
+		},
+		'100%': {
+			transform: 'scale(0.95)',
+			boxShadow: '0 0 0 0 rgba(255, 152, 0, 0)',
 		},
 	},
 }));
@@ -43,6 +74,7 @@ const TicketActionButtons = ({ ticket, onNavigateToMessage }) => {
 		setAnchorEl(null);
 	};
 
+	// ✅ OTIMIZAÇÃO: Busca com feedback visual
 	const handleOpenMessageSearch = () => {
 		setMessageSearchOpen(true);
 	};
@@ -102,9 +134,17 @@ const TicketActionButtons = ({ ticket, onNavigateToMessage }) => {
 					>
 						{i18n.t("messagesList.header.buttons.resolve")}
 					</ButtonWithSpinner>
-					<IconButton onClick={handleOpenMessageSearch}>
+					
+					{/* ✅ BOTÃO DE BUSCA OTIMIZADO */}
+					<IconButton 
+						onClick={handleOpenMessageSearch}
+						className={`${classes.searchButton} ${messageSearchOpen ? 'active' : ''}`}
+						title="Buscar mensagens (Ctrl+F)"
+					>
 						<Search />
+						{messageSearchOpen && <div className={classes.searchIndicator} />}
 					</IconButton>
+					
 					<IconButton onClick={handleOpenTicketOptionsMenu}>
 						<MoreVert />
 					</IconButton>
@@ -114,6 +154,8 @@ const TicketActionButtons = ({ ticket, onNavigateToMessage }) => {
 						menuOpen={ticketOptionsMenuOpen}
 						handleClose={handleCloseTicketOptionsMenu}
 					/>
+					
+					{/* ✅ MODAL DE BUSCA OTIMIZADO */}
 					<MessageSearchModal
 						open={messageSearchOpen}
 						onClose={handleCloseMessageSearch}

@@ -1,99 +1,118 @@
 import { QueryTypes } from "sequelize";
-import sequelize from "../../database";
-import AppError from "../../errors/AppError";
-import Message from "../../models/Message";
-import Ticket from "../../models/Ticket";
-import ShowTicketService from "../TicketServices/ShowTicketService";
+import database from "../../database";
 
-interface Request {
-  ticketId: string;
-  pageNumber?: string;
+interface ListMessagesParams {
+  ticketId: string | number;
+  pageNumber?: number;
+  limit?: number;
 }
 
-interface MessageWithContact extends Message {
-  contact?: { name: string; };
-  quotedMsg?: { body: string; contact?: { name: string; } }
-}
-
-interface Response {
-  messages: MessageWithContact[];
-  ticket: Ticket;
-  count: number;
-  hasMore: boolean;
+interface MessageResult {
+  id: string;
+  body: string;
+  mediaUrl: string;
+  mediaType: string;
+  isDeleted: boolean;
+  fromMe: boolean;
+  read: boolean;
+  quotedMsgId: string;
+  ack: number;
+  createdAt: Date;
+  updatedAt: Date;
+  ticketId: number;
+  contactId: number;
 }
 
 const ListMessagesService = async ({
-  pageNumber = "1",
-  ticketId
-}: Request): Promise<Response> => {
-  const startTime = Date.now();
-  console.log(`\n--- [DIAGNÓSTICO PRECISO] INICIANDO ListMessagesService para Ticket ID: ${ticketId} ---`);
-
-  // ETAPA 1: Buscar os dados do ticket.
-  console.log(`[1] Buscando Ticket...`);
-  const step1Time = Date.now();
-  const ticket = await ShowTicketService(ticketId);
-  console.log(`[1] >>>> ShowTicketService demorou: ${Date.now() - step1Time}ms`);
-
-  if (!ticket) {
-    throw new AppError("ERR_NO_TICKET_FOUND", 404);
-  }
-
-  const limit = 20;
-  const offset = limit * (+pageNumber - 1);
-  console.log(`[2] Parâmetros de paginação definidos: Limit: ${limit}, Offset: ${offset}`);
-
-  // ETAPA 3: A query principal que busca as mensagens.
-  const query = `
-    SELECT
-      msg.*,
-      c.name AS "contact.name",
-      quoted.body AS "quotedMsg.body",
-      quotedContact.name AS "quotedMsg.contact.name"
-    FROM Messages AS msg
-    LEFT JOIN Contacts AS c ON msg.contactId = c.id
-    LEFT JOIN Messages AS quoted ON msg.quotedMsgId = quoted.id
-    LEFT JOIN Contacts AS quotedContact ON quoted.contactId = quotedContact.id
-    WHERE msg.ticketId = :ticketId
-    ORDER BY msg.createdAt DESC, msg.id DESC
-    LIMIT :limitPlusOne
-    OFFSET :offset;
-  `;
-
-  console.log(`[3] Executando a query principal...`);
-  const step3Time = Date.now();
-  const messages: MessageWithContact[] = await sequelize.query(query, {
-    replacements: { ticketId, limitPlusOne: limit + 1, offset },
-    type: QueryTypes.SELECT,
-    nest: true,
-  });
-  console.log(`[3] >>>> Query principal demorou: ${Date.now() - step3Time}ms. Retornou ${messages.length} linhas.`);
-
-  // ETAPA 4: Lógica de paginação.
-  console.log(`[4] Processando hasMore...`);
-  const step4Time = Date.now();
-  const hasMore = messages.length > limit;
-  if (hasMore) {
-    messages.pop();
-  }
-  console.log(`[4] >>>> Processamento de hasMore demorou: ${Date.now() - step4Time}ms`);
-
-  // ETAPA 5: Invertendo o array.
-  console.log(`[5] Invertendo o array de mensagens...`);
-  const step5Time = Date.now();
-  const reversedMessages = messages.reverse();
-  console.log(`[5] >>>> Inversão do array demorou: ${Date.now() - step5Time}ms`);
+  ticketId,
+  pageNumber = 1,
+  limit = 20
+}: ListMessagesParams) => {
+  const offset = (pageNumber - 1) * limit;
   
-  const count = 0; 
+  console.time(`ListMessages-Ticket-${ticketId}-Page-${pageNumber}`);
+  
+  try {
+    // ✅ VERSÃO ULTRA-SIMPLIFICADA: Sem JOINs pesados
+    // Carrega apenas os dados essenciais da mensagem
+    const query = `
+      SELECT 
+        id,
+        body,
+        mediaUrl,
+        mediaType,
+        isDeleted,
+        fromMe,
+        \`read\`,
+        quotedMsgId,
+        ack,
+        createdAt,
+        updatedAt,
+        ticketId,
+        contactId
+      FROM Messages
+      WHERE ticketId = ?
+      ORDER BY createdAt DESC, id DESC
+      LIMIT ? OFFSET ?
+    `;
 
-  console.log(`--- [DIAGNÓSTICO PRECISO] FINALIZADO. Tempo total: ${Date.now() - startTime}ms ---`);
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM Messages
+      WHERE ticketId = ?
+    `;
 
-  return {
-    messages: reversedMessages,
-    ticket,
-    count,
-    hasMore
-  };
+    // ✅ EXECUÇÃO PARALELA
+    const [messagesResult, countResult] = await Promise.all([
+      database.query(query, {
+        type: QueryTypes.SELECT,
+        replacements: [ticketId, limit, offset]
+      }) as Promise<MessageResult[]>,
+      
+      database.query(countQuery, {
+        type: QueryTypes.SELECT,
+        replacements: [ticketId]
+      }) as Promise<Array<{total: number}>>
+    ]);
+
+    console.timeEnd(`ListMessages-Ticket-3-Page-${pageNumber}`);
+
+    // ✅ PROCESSAMENTO MÍNIMO - apenas estrutura básica
+    const messages = messagesResult.map(row => ({
+      id: row.id,
+      body: row.body,
+      mediaUrl: row.mediaUrl,
+      mediaType: row.mediaType,
+      isDeleted: row.isDeleted,
+      fromMe: row.fromMe,
+      read: row.read,
+      quotedMsgId: row.quotedMsgId,
+      ack: row.ack,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      ticketId: row.ticketId,
+      // ✅ CONTATO E QUOTE VAZIOS - Frontend pode buscar se necessário
+      contact: null,
+      quotedMsg: null
+    }));
+
+    const total = countResult[0]?.total || 0;
+    const hasMore = total > offset + limit;
+
+    console.log(`✅ ListMessages ULTRA-FAST: ${messages.length} messages loaded for ticket ${ticketId}, page ${pageNumber}`);
+
+    return {
+      messages: messages.reverse(), // Ordem cronológica (mais antigas primeiro)
+      count: total,
+      hasMore
+    };
+
+  } catch (error) {
+    console.error(`❌ Error in ListMessagesService for ticket ${ticketId}:`, error);
+    console.timeEnd(`ListMessages-Ticket-${ticketId}-Page-${pageNumber}`);
+    
+    throw new Error(`Failed to load messages for ticket ${ticketId}: ${error.message}`);
+  }
 };
 
 export default ListMessagesService;

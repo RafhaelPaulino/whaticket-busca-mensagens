@@ -237,6 +237,21 @@ const useStyles = makeStyles((theme) => ({
 	highlightedMessage: {
 		backgroundColor: '#fff9c4 !important',
 		transition: 'background-color 2s ease-out',
+		animation: '$pulse 2s ease-in-out',
+	},
+	'@keyframes pulse': {
+		'0%': {
+			backgroundColor: '#fff3cd',
+			transform: 'scale(1.02)',
+		},
+		'50%': {
+			backgroundColor: '#fff9c4',
+			transform: 'scale(1.01)',
+		},
+		'100%': {
+			backgroundColor: 'transparent',
+			transform: 'scale(1)',
+		},
 	},
 }));
 
@@ -253,8 +268,10 @@ const reducer = (state, action) => {
 			});
 			return [...newMessages, ...state].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 		}
-		case "LOAD_CONTEXT":
-			return action.payload; // Substitui a lista inteira pelo contexto
+		case "LOAD_CONTEXT": {
+			// ✅ OTIMIZAÇÃO CRÍTICA: Substitui lista inteira pelo contexto da mensagem
+			return action.payload.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+		}
 		case "ADD_MESSAGE": {
 			const newMessage = action.payload;
 			const messageIndex = state.findIndex((m) => m.id === newMessage.id);
@@ -286,6 +303,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 	const [pageNumber, setPageNumber] = useState(1);
 	const [hasMore, setHasMore] = useState(false);
 	const [loading, setLoading] = useState(false);
+	const [isContextMode, setIsContextMode] = useState(false);
 	const lastMessageRef = useRef();
 	const messagesListContainerRef = useRef(null);
 	const [selectedMessage, setSelectedMessage] = useState({});
@@ -299,8 +317,10 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 		}
 	}, []);
 
-	// Função para buscar as mensagens da conversa (scroll para cima ou inicial)
+	// ✅ FUNÇÃO OTIMIZADA: Buscar mensagens da conversa (scroll para cima ou inicial)
 	const fetchMessages = useCallback(async (page) => {
+		if (isContextMode) return; // Não buscar mais se estivermos no modo contexto
+		
 		setLoading(true);
 		try {
 			const { data } = await api.get(`/messages/${ticketId}`, {
@@ -314,51 +334,84 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 		} catch (err) {
 			toastError(err);
 		} finally {
-			setLoading(false);
-		}
-	}, [ticketId, scrollToBottom]);
-
-	// Efeito principal que decide o que fazer: carregar do início ou pular para o meio
-	useEffect(() => {
-		const fetchMessageContext = async (msgId) => {
-			setLoading(true);
-			try {
-				const { data } = await api.get(`/messages/context/${msgId}`, {
-					params: { ticketId }
-				});
-				dispatch({ type: "LOAD_CONTEXT", payload: data.messages });
-				setHasMore(true); // Assume que pode haver mais para carregar
-			} catch (err) {
-				toastError("Erro ao carregar o contexto da mensagem.");
-				fetchMessages(1); // Se falhar, carrega do início
-			} finally {
+			if (isMountedRef.current) {
 				setLoading(false);
 			}
-		};
+		}
+	}, [ticketId, scrollToBottom, isContextMode]);
 
+	// ✅ FUNÇÃO CRITICA OTIMIZADA: Usar API de contexto do backend
+	const fetchMessageContext = useCallback(async (msgId) => {
+		setLoading(true);
+		setIsContextMode(true); // Marca que estamos no modo contexto
+		
+		try {
+            // ✅ CORREÇÃO APLICADA AQUI: A URL agora é construída corretamente.
+            // O ticketId faz parte do caminho da URL, e não de um parâmetro de query.
+			const { data } = await api.get(`/messages/${ticketId}/context/${msgId}`);
+			
+			// ✅ SOLUÇÃO PRINCIPAL: Usa contexto otimizado em vez de recarregar tudo
+			dispatch({ type: "LOAD_CONTEXT", payload: data.messages });
+			setHasMore(true); // No modo contexto, sempre pode ter mais mensagens
+			
+		} catch (err) {
+			console.error("Erro ao carregar contexto da mensagem:", err);
+			toastError("Erro ao carregar o contexto da mensagem.");
+			
+			// Fallback para método tradicional
+			setIsContextMode(false);
+			fetchMessages(1);
+		} finally {
+			if (isMountedRef.current) {
+				setLoading(false);
+			}
+		}
+	}, [ticketId, fetchMessages]);
+
+	// ✅ EFEITO PRINCIPAL OTIMIZADO
+	useEffect(() => {
 		dispatch({ type: "RESET" });
 		setPageNumber(1);
+		setIsContextMode(false);
 
 		if (messageToScrollToId) {
+			// ✅ NAVEGAÇÃO RÁPIDA: Usa contexto da mensagem
 			fetchMessageContext(messageToScrollToId);
 		} else {
+			// Carregamento normal da conversa
 			fetchMessages(1);
 		}
-	}, [ticketId, messageToScrollToId, fetchMessages]);
+	}, [ticketId, messageToScrollToId, fetchMessageContext, fetchMessages]);
 
-	// Efeito para rolar e destacar a mensagem quando ela estiver na tela
+	// ✅ SCROLL E HIGHLIGHT OTIMIZADO
 	useEffect(() => {
 		if (messageToScrollToId && messagesList.length > 0 && !loading) {
-			const messageElement = document.getElementById(`message-${messageToScrollToId}`);
-			if (messageElement) {
-				messageElement.scrollIntoView({ behavior: "smooth", block: "center" });
-				messageElement.classList.add(classes.highlightedMessage);
-				setTimeout(() => {
-					if (isMountedRef.current) {
-						messageElement.classList.remove(classes.highlightedMessage);
-					}
-				}, 3000);
-			}
+			// Pequeno delay para garantir que a mensagem foi renderizada
+			const timer = setTimeout(() => {
+				const messageElement = document.getElementById(`message-${messageToScrollToId}`);
+				if (messageElement) {
+					// ✅ SCROLL INTELIGENTE: Centra a mensagem na tela
+					messageElement.scrollIntoView({ 
+						behavior: "smooth", 
+						block: "center",
+						inline: "nearest" 
+					});
+					
+					// ✅ HIGHLIGHT VISUAL MELHORADO
+					messageElement.classList.add(classes.highlightedMessage);
+					
+					// Remove highlight após 3 segundos
+					const highlightTimer = setTimeout(() => {
+						if (isMountedRef.current && messageElement) {
+							messageElement.classList.remove(classes.highlightedMessage);
+						}
+					}, 3000);
+					
+					return () => clearTimeout(highlightTimer);
+				}
+			}, 150); // Pequeno delay para renderização
+			
+			return () => clearTimeout(timer);
 		}
 	}, [messageToScrollToId, messagesList, loading, classes.highlightedMessage]);
 	
@@ -374,18 +427,31 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 		socket.on("appMessage", (data) => {
 			if (data.action === "create") {
 				dispatch({ type: "ADD_MESSAGE", payload: data.message });
-				scrollToBottom();
+				// Se não estamos no modo contexto, rola para o final
+				if (!isContextMode) {
+					scrollToBottom();
+				}
 			}
 			if (data.action === "update") {
 				dispatch({ type: "UPDATE_MESSAGE", payload: data.message });
 			}
 		});
 		return () => { socket.disconnect(); };
-	}, [ticketId, scrollToBottom]);
+	}, [ticketId, scrollToBottom, isContextMode]);
 
+	// ✅ LOAD MORE OTIMIZADO
 	const loadMore = useCallback(() => {
-		setPageNumber((prevPageNumber) => prevPageNumber + 1);
-	}, []);
+		if (isContextMode) {
+			// No modo contexto, volta ao modo normal e carrega mais
+			setIsContextMode(false);
+			setPageNumber(2); // Começa da página 2
+			fetchMessages(2);
+		} else {
+			const nextPage = pageNumber + 1;
+			setPageNumber(nextPage);
+			fetchMessages(nextPage);
+		}
+	}, [pageNumber, fetchMessages, isContextMode]);
 
 	const handleScroll = useCallback((e) => {
 		if (!hasMore || loading) return;
@@ -403,14 +469,153 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 		setAnchorEl(null);
 	};
 
-	// Suas funções de renderização (checkMessageMedia, renderMessageAck, etc.)
-	// permanecem exatamente as mesmas que você me enviou.
-	// ...
-	const checkMessageMedia = useCallback((message) => { /* ... SEU CÓDIGO ORIGINAL ... */ }, []);
-	const renderMessageAck = useCallback((message) => { /* ... SEU CÓDIGO ORIGINAL ... */ }, []);
-	const renderDailyTimestamps = useCallback((message, index) => { /* ... SEU CÓDIGO ORIGINAL ... */ }, [messagesList]);
-	const renderMessageDivider = useCallback((message, index) => { /* ... SEU CÓDIGO ORIGINAL ... */ }, [messagesList]);
-	const renderQuotedMessage = useCallback((message) => { /* ... SEU CÓDIGO ORIGINAL ... */ }, []);
+	// Suas funções de renderização permanecem as mesmas
+	const checkMessageMedia = useCallback((message) => {
+		if (message.mediaType === "location" && message.body.split('|').length >= 2) {
+			let locationParts = message.body.split('|');
+			let imageLocation = locationParts[0];
+			let linkLocation = locationParts[1];
+			let descriptionLocation = null;
+			if (locationParts.length > 2) {
+				descriptionLocation = message.body.split('|')[2];
+			}
+			return <LocationPreview image={imageLocation} link={linkLocation} description={descriptionLocation} />;
+		}
+		else if (message.mediaType === "vcard") {
+			let array = message.body.split("\n");
+			let obj = [];
+			let contact = "";
+			for (let index = 0; index < array.length; index++) {
+				const v = array[index];
+				let values = v.split(":");
+				for (let ind = 0; ind < values.length; ind++) {
+					if (values[ind].indexOf("+") !== -1) {
+						obj.push({ number: values[ind] });
+					}
+					if (values[ind].indexOf("FN") !== -1) {
+						contact = values[ind + 1];
+					}
+				}
+			}
+			return <VcardPreview contact={contact} numbers={obj[0]?.number} />;
+		}
+		else if (/^.*\.(jpe?g|png|gif)?$/i.exec(message.mediaUrl) && message.mediaType === "image") {
+			return <ModalImageCors imageUrl={message.mediaUrl} />;
+		} else if (message.mediaType === "audio") {
+			return <Audio url={message.mediaUrl} />;
+		} else if (message.mediaType === "video") {
+			return (
+				<video
+					className={classes.messageMedia}
+					src={message.mediaUrl}
+					controls
+				/>
+			);
+		} else {
+			return (
+				<>
+					<div className={classes.downloadMedia}>
+						<Button
+							startIcon={<GetApp />}
+							color="primary"
+							variant="outlined"
+							target="_blank"
+							href={message.mediaUrl}
+						>
+							Download
+						</Button>
+					</div>
+					<Divider />
+				</>
+			);
+		}
+	}, [classes.messageMedia, classes.downloadMedia]);
+
+	const renderMessageAck = useCallback((message) => {
+		if (message.ack === 0) {
+			return <AccessTime fontSize="small" className={classes.ackIcons} />;
+		}
+		if (message.ack === 1) {
+			return <Done fontSize="small" className={classes.ackIcons} />;
+		}
+		if (message.ack === 2) {
+			return <DoneAll fontSize="small" className={classes.ackIcons} />;
+		}
+		if (message.ack === 3 || message.ack === 4) {
+			return <DoneAll fontSize="small" className={classes.ackDoneAllIcon} />;
+		}
+		return null;
+	}, [classes.ackIcons, classes.ackDoneAllIcon]);
+
+	const renderDailyTimestamps = useCallback((message, index) => {
+		if (index === 0) {
+			return (
+				<span
+					className={classes.dailyTimestamp}
+					key={`timestamp-${message.id}`}
+				>
+					<div className={classes.dailyTimestampText}>
+						{format(parseISO(messagesList[index].createdAt), "dd/MM/yyyy")}
+					</div>
+				</span>
+			);
+		}
+		if (index < messagesList.length) {
+			let messageDay = parseISO(messagesList[index].createdAt);
+			let previousMessageDay = parseISO(messagesList[index - 1].createdAt);
+			if (!isSameDay(messageDay, previousMessageDay)) {
+				return (
+					<span
+						className={classes.dailyTimestamp}
+						key={`timestamp-${message.id}`}
+					>
+						<div className={classes.dailyTimestampText}>
+							{format(parseISO(messagesList[index].createdAt), "dd/MM/yyyy")}
+						</div>
+					</span>
+				);
+			}
+		}
+		return null;
+	}, [messagesList, classes.dailyTimestamp, classes.dailyTimestampText]);
+
+	const renderMessageDivider = useCallback((message, index) => {
+		if (index < messagesList.length && index > 0) {
+			let messageUser = messagesList[index].fromMe;
+			let previousMessageUser = messagesList[index - 1].fromMe;
+			if (messageUser !== previousMessageUser) {
+				return (
+					<span style={{ marginTop: 16 }} key={`divider-${message.id}`}></span>
+				);
+			}
+		}
+		return null;
+	}, [messagesList]);
+
+	const renderQuotedMessage = useCallback((message) => {
+		if (!message.quotedMsg) return null;
+		return (
+			<div
+				className={clsx(classes.quotedContainerLeft, {
+					[classes.quotedContainerRight]: message.fromMe,
+				})}
+			>
+				<span
+					className={clsx(classes.quotedSideColorLeft, {
+						[classes.quotedSideColorRight]: message.quotedMsg?.fromMe,
+					})}
+				></span>
+				<div className={classes.quotedMsg}>
+					{!message.quotedMsg?.fromMe && (
+						<span className={classes.messageContactName}>
+							{message.quotedMsg?.contact?.name}
+						</span>
+					)}
+					{message.quotedMsg?.body}
+				</div>
+			</div>
+		);
+	}, [classes]);
 
 	const renderMessages = useCallback(() => {
 		if (messagesList.length > 0) {
@@ -425,6 +630,8 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 							className={clsx(classes.messageLeft, { [classes.messageRight]: isFromMe })}
 						>
 							<IconButton
+								variant="contained"
+								size="small"
 								id="messageActionsButton"
 								disabled={message.isDeleted}
 								className={classes.messageActionsButton}
@@ -452,15 +659,15 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 				);
 			});
 		}
-		return null;
+		return <div>Diga olá para seu novo contato!</div>;
 	}, [
 		messagesList,
-		isGroup,
-		classes,
 		renderDailyTimestamps,
 		renderMessageDivider,
-		renderQuotedMessage,
+		classes,
+		isGroup,
 		checkMessageMedia,
+		renderQuotedMessage,
 		renderMessageAck,
 		handleOpenMessageOptionsMenu
 	]);

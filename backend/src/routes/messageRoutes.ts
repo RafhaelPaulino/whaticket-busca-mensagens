@@ -3,27 +3,32 @@ import multer from "multer";
 import isAuth from "../middleware/isAuth";
 import uploadConfig from "../config/upload";
 
-// Importamos todas as funções necessárias, incluindo a nova 'getContext'
+// ✅ IMPORTAÇÕES ATUALIZADAS
 import {
   index,
   store,
   remove,
   searchMessages,
-  getContext
+  getTicketInfo,
+  lazyIndex,
+  lazySearch,
+  getMessageContext
 } from "../controllers/MessageController";
 
 const messageRoutes = Router();
 const upload = multer(uploadConfig);
 
-// Rota de busca otimizada
+// 🚀 NOVAS ROTAS OTIMIZADAS (lazy loading)
+messageRoutes.get("/messages/:ticketId/lazy", isAuth, lazyIndex);
+messageRoutes.get("/messages/:ticketId/lazy-search", isAuth, lazySearch);
+messageRoutes.get("/messages/:ticketId/context/:messageId", isAuth, getMessageContext);
+messageRoutes.get("/messages/:ticketId/info", isAuth, getTicketInfo);
+
+// 🔄 ROTAS DE COMPATIBILIDADE (redirecionadas para versões otimizadas)
 messageRoutes.get("/messages/search/:ticketId", isAuth, searchMessages);
-
-// NOVA ROTA para buscar o contexto de uma mensagem
-messageRoutes.get("/messages/context/:messageId", isAuth, getContext);
-
-// Suas rotas existentes
 messageRoutes.get("/messages/:ticketId", isAuth, index);
 
+// ✅ ROTAS EXISTENTES MANTIDAS
 messageRoutes.post(
   "/messages/:ticketId",
   isAuth,

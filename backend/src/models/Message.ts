@@ -11,7 +11,7 @@ import {
   ForeignKey
 } from "sequelize-typescript";
 import Contact from "./Contact";
-import Ticket from "./Ticket";
+import Ticket from "./Ticket"; 
 
 @Table
 class Message extends Model<Message> {
