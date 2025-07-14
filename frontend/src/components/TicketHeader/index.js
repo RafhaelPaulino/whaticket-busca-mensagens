@@ -17,8 +17,7 @@ const useStyles = makeStyles((theme) => ({
     },
 }));
 
-// Este é o componente limpo, sem botões de ação extras.
-// Ele apenas mostra a seta de voltar e as informações do ticket (children).
+
 const TicketHeader = ({ loading, children }) => {
     const classes = useStyles();
     const history = useHistory();

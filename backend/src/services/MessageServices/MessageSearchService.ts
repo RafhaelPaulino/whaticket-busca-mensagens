@@ -43,7 +43,7 @@ const MessageSearchService = async ({
   hasMore: boolean;
 }> => {
   
-  // ✅ VALIDAÇÃO básica
+
   if (!searchParam || searchParam.trim().length < 2) {
     throw new Error("Search parameter must be at least 2 characters long");
   }
@@ -54,7 +54,7 @@ const MessageSearchService = async ({
   console.time(`MessageSearch-Ticket-${ticketId}-"${sanitizedSearch}"`);
 
   try {
-    // ✅ CONSTRUÇÃO de filtros dinâmicos
+  
     let additionalFilters = '';
     const baseReplacements = [ticketId];
 
@@ -82,7 +82,7 @@ const MessageSearchService = async ({
       }
     }
 
-    // ✅ BUSCA FULLTEXT ULTRA-SIMPLIFICADA (sem JOINs)
+  
     const fullTextQuery = `
       SELECT 
         id,
@@ -117,10 +117,10 @@ const MessageSearchService = async ({
     `;
 
     const fullTextReplacements = [
-      sanitizedSearch, // MATCH no SELECT  
+      sanitizedSearch, 
       ticketId,
-      sanitizedSearch, // MATCH no WHERE
-      ...baseReplacements.slice(1), // Filtros adicionais
+      sanitizedSearch, 
+      ...baseReplacements.slice(1),
       limit,
       offset
     ];
@@ -157,7 +157,7 @@ const MessageSearchService = async ({
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       ticketId: row.ticketId,
-      contact: null, // ✅ Sem JOINs pesados
+      contact: null, 
       _relevanceScore: row.relevanceScore
     }));
 
@@ -176,7 +176,7 @@ const MessageSearchService = async ({
     console.error(`❌ FULLTEXT search failed:`, fullTextError);
     console.log("🔄 Using fallback LIKE search...");
     
-    // ✅ FALLBACK: Busca LIKE ultra-simples
+   
     try {
       const likeQuery = `
         SELECT 

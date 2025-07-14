@@ -4,7 +4,7 @@ import toastError from "../../errors/toastError";
 
 import api from "../../services/api";
 
-// ✅ HOOK MANTIDO - Não afeta a navegação de mensagens
+
 const useTickets = ({
     searchParam,
     pageNumber,

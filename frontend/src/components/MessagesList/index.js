@@ -269,7 +269,6 @@ const reducer = (state, action) => {
 			return [...newMessages, ...state].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 		}
 		case "LOAD_CONTEXT": {
-			// ✅ OTIMIZAÇÃO CRÍTICA: Substitui lista inteira pelo contexto da mensagem
 			return action.payload.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 		}
 		case "ADD_MESSAGE": {
@@ -317,9 +316,8 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 		}
 	}, []);
 
-	// ✅ FUNÇÃO OTIMIZADA: Buscar mensagens da conversa (scroll para cima ou inicial)
 	const fetchMessages = useCallback(async (page) => {
-		if (isContextMode) return; // Não buscar mais se estivermos no modo contexto
+		if (isContextMode) return;
 		
 		setLoading(true);
 		try {
@@ -340,25 +338,20 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 		}
 	}, [ticketId, scrollToBottom, isContextMode]);
 
-	// ✅ FUNÇÃO CRITICA OTIMIZADA: Usar API de contexto do backend
 	const fetchMessageContext = useCallback(async (msgId) => {
 		setLoading(true);
-		setIsContextMode(true); // Marca que estamos no modo contexto
+		setIsContextMode(true);
 		
 		try {
-            // ✅ CORREÇÃO APLICADA AQUI: A URL agora é construída corretamente.
-            // O ticketId faz parte do caminho da URL, e não de um parâmetro de query.
 			const { data } = await api.get(`/messages/${ticketId}/context/${msgId}`);
 			
-			// ✅ SOLUÇÃO PRINCIPAL: Usa contexto otimizado em vez de recarregar tudo
 			dispatch({ type: "LOAD_CONTEXT", payload: data.messages });
-			setHasMore(true); // No modo contexto, sempre pode ter mais mensagens
+			setHasMore(true);
 			
 		} catch (err) {
 			console.error("Erro ao carregar contexto da mensagem:", err);
 			toastError("Erro ao carregar o contexto da mensagem.");
 			
-			// Fallback para método tradicional
 			setIsContextMode(false);
 			fetchMessages(1);
 		} finally {
@@ -368,39 +361,31 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 		}
 	}, [ticketId, fetchMessages]);
 
-	// ✅ EFEITO PRINCIPAL OTIMIZADO
 	useEffect(() => {
 		dispatch({ type: "RESET" });
 		setPageNumber(1);
 		setIsContextMode(false);
 
 		if (messageToScrollToId) {
-			// ✅ NAVEGAÇÃO RÁPIDA: Usa contexto da mensagem
 			fetchMessageContext(messageToScrollToId);
 		} else {
-			// Carregamento normal da conversa
 			fetchMessages(1);
 		}
 	}, [ticketId, messageToScrollToId, fetchMessageContext, fetchMessages]);
 
-	// ✅ SCROLL E HIGHLIGHT OTIMIZADO
 	useEffect(() => {
 		if (messageToScrollToId && messagesList.length > 0 && !loading) {
-			// Pequeno delay para garantir que a mensagem foi renderizada
 			const timer = setTimeout(() => {
 				const messageElement = document.getElementById(`message-${messageToScrollToId}`);
 				if (messageElement) {
-					// ✅ SCROLL INTELIGENTE: Centra a mensagem na tela
-					messageElement.scrollIntoView({ 
-						behavior: "smooth", 
+					messageElement.scrollIntoView({ 
+						behavior: "smooth", 
 						block: "center",
-						inline: "nearest" 
+						inline: "nearest" 
 					});
 					
-					// ✅ HIGHLIGHT VISUAL MELHORADO
 					messageElement.classList.add(classes.highlightedMessage);
 					
-					// Remove highlight após 3 segundos
 					const highlightTimer = setTimeout(() => {
 						if (isMountedRef.current && messageElement) {
 							messageElement.classList.remove(classes.highlightedMessage);
@@ -409,7 +394,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 					
 					return () => clearTimeout(highlightTimer);
 				}
-			}, 150); // Pequeno delay para renderização
+			}, 150);
 			
 			return () => clearTimeout(timer);
 		}
@@ -420,14 +405,12 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 		return () => { isMountedRef.current = false; };
 	}, []);
 
-	// Socket listener
 	useEffect(() => {
 		const socket = openSocket();
 		socket.on("connect", () => socket.emit("joinChatBox", ticketId));
 		socket.on("appMessage", (data) => {
 			if (data.action === "create") {
 				dispatch({ type: "ADD_MESSAGE", payload: data.message });
-				// Se não estamos no modo contexto, rola para o final
 				if (!isContextMode) {
 					scrollToBottom();
 				}
@@ -439,12 +422,10 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 		return () => { socket.disconnect(); };
 	}, [ticketId, scrollToBottom, isContextMode]);
 
-	// ✅ LOAD MORE OTIMIZADO
 	const loadMore = useCallback(() => {
 		if (isContextMode) {
-			// No modo contexto, volta ao modo normal e carrega mais
 			setIsContextMode(false);
-			setPageNumber(2); // Começa da página 2
+			setPageNumber(2);
 			fetchMessages(2);
 		} else {
 			const nextPage = pageNumber + 1;
@@ -469,7 +450,6 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 		setAnchorEl(null);
 	};
 
-	// Suas funções de renderização permanecem as mesmas
 	const checkMessageMedia = useCallback((message) => {
 		if (message.mediaType === "location" && message.body.split('|').length >= 2) {
 			let locationParts = message.body.split('|');

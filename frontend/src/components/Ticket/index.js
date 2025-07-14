@@ -84,7 +84,7 @@ const Ticket = () => {
   const [ticket, setTicket] = useState({});
   const [messageToScrollToId, setMessageToScrollToId] = useState(null);
 
-  // ✅ OTIMIZAÇÃO: Fetch de ticket mais eficiente
+ 
   useEffect(() => {
     const fetchTicket = async () => {
       if (!ticketId) return;
@@ -96,7 +96,7 @@ const Ticket = () => {
         setTicket(data);
       } catch (err) {
         toastError(err);
-        // Se o ticket não existe, redireciona
+       
         if (err.response?.status === 404) {
           history.push("/tickets");
         }
@@ -105,11 +105,11 @@ const Ticket = () => {
       }
     };
 
-    // ✅ OTIMIZAÇÃO: Remove debounce desnecessário
+
     fetchTicket();
   }, [ticketId, history]);
 
-  // ✅ SOCKET LISTENERS OTIMIZADOS
+
   useEffect(() => {
     const socket = openSocket();
 
@@ -150,18 +150,17 @@ const Ticket = () => {
     setDrawerOpen(false);
   }, []);
 
-  // ✅ FUNÇÃO CRÍTICA OTIMIZADA: Navegação rápida para mensagem
   const handleNavigateToMessage = useCallback((messageId) => {
-    // ✅ SOLUÇÃO PRINCIPAL: Limpa navegação anterior e define nova
+   
     setMessageToScrollToId(null);
     
-    // Pequeno timeout para garantir que o estado foi limpo
+
     setTimeout(() => {
       setMessageToScrollToId(messageId);
     }, 50);
   }, []);
 
-  // ✅ OTIMIZAÇÃO: Limpa messageToScrollToId quando muda de ticket
+
   useEffect(() => {
     setMessageToScrollToId(null);
   }, [ticketId]);

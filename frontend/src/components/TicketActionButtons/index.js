@@ -23,7 +23,7 @@ const useStyles = makeStyles(theme => ({
 			margin: theme.spacing(1),
 		},
 	},
-	// ✅ NOVO: Indicador visual para busca ativa
+
 	searchButton: {
 		position: "relative",
 		"&.active": {
@@ -74,7 +74,7 @@ const TicketActionButtons = ({ ticket, onNavigateToMessage }) => {
 		setAnchorEl(null);
 	};
 
-	// ✅ OTIMIZAÇÃO: Busca com feedback visual
+	
 	const handleOpenMessageSearch = () => {
 		setMessageSearchOpen(true);
 	};

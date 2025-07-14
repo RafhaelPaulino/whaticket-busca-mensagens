@@ -186,7 +186,7 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
 
     const searchInputRef = useRef(null);
 
-    // ✅ CACHE OTIMIZADO
+
     const [searchCache] = useState(() => new Map());
 
     const normalizeText = (text) => {
@@ -221,7 +221,7 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
         );
     };
     
-    // ✅ FUNÇÃO OTIMIZADA DE BUSCA
+
     const performSearch = useCallback(async (query, pageNum) => {
         if (!query || query.length < 2) return;
 
@@ -283,7 +283,6 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
         }
     }, [ticketId, searchCache]);
 
-    // ✅ DEBOUNCE OTIMIZADO
     const debouncedSearch = useMemo(
         () => debounce((query) => {
             if (query.length >= 2) {
@@ -326,7 +325,6 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
         setSearchQuery(event.target.value);
     };
 
-    // ✅ NAVEGAÇÃO OTIMIZADA
     const handleMessageClick = (messageId) => {
         if (onNavigateToMessage) {
             const clickedElement = document.querySelector(`[data-message-id="${messageId}"]`);

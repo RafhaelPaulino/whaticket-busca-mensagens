@@ -1,14 +1,12 @@
 import { QueryTypes } from "sequelize";
 import database from "../../database";
 
-// Interface para definir a estrutura dos parâmetros de entrada
+
 interface MessageContextParams {
   ticketId: string | number;
   messageId: string;
-  contextSize?: number; // Quantas mensagens buscar antes e depois (padrão: 10)
+  contextSize?: number; 
 }
-
-// Interface para garantir a tipagem do resultado da query
 interface MessageResult {
   id: string;
   body: string;
@@ -34,8 +32,7 @@ const MessageContextService = async ({
   console.time(`MessageContext-${messageId}`);
   
   try {
-    // ETAPA 1: Encontra a mensagem "alvo" que o usuário clicou.
-    // Ela servirá como ponto de referência (pivô) para buscar o contexto.
+
     const targetQuery = `
       SELECT 
         id, body, mediaUrl, mediaType, isDeleted, fromMe, \`read\`,
@@ -55,9 +52,7 @@ const MessageContextService = async ({
 
     const targetMessage = targetResult[0];
 
-    // ETAPA 2: Prepara as queries para buscar as mensagens ANTES e DEPOIS da alvo.
-    // A lógica `(createdAt < ? OR (createdAt = ? AND id < ?))` é a forma mais precisa
-    // de fazer paginação para evitar pular mensagens com o mesmo timestamp.
+ 
     const beforeQuery = `
       SELECT * FROM Messages
       WHERE ticketId = ? AND (createdAt < ? OR (createdAt = ? AND id < ?))
@@ -72,7 +67,7 @@ const MessageContextService = async ({
       LIMIT ?
     `;
 
-    // ETAPA 3: Executa as duas queries de contexto em paralelo para ganhar tempo.
+
     const [beforeResults, afterResults] = await Promise.all([
       database.query(beforeQuery, {
         type: QueryTypes.SELECT,
@@ -87,14 +82,13 @@ const MessageContextService = async ({
 
     console.timeEnd(`MessageContext-${messageId}`);
 
-    // ETAPA 4: Processa e organiza os resultados.
-    // As mensagens "antes" chegam em ordem invertida, então usamos .reverse() para corrigir.
+
     const beforeMessages = beforeResults.reverse();
     const afterMessages = afterResults;
 
     const allMessages = [...beforeMessages, targetMessage, ...afterMessages];
 
-    // ETAPA 5: Encontra o índice da mensagem alvo para o frontend saber qual destacar.
+   
     const targetIndex = beforeMessages.length;
 
     console.log(`✅ MessageContext: Loaded ${allMessages.length} messages around message ${messageId}`);

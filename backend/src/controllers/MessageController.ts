@@ -3,12 +3,10 @@ import SetTicketMessagesAsRead from "../helpers/SetTicketMessagesAsRead";
 import { getIO } from "../libs/socket";
 import Message from "../models/Message";
 
-// ✅ NOVOS SERVIÇOS OTIMIZADOS
 import LazyListMessagesService from "../services/MessageServices/LazyListMessagesService";
 import LazySearchService from "../services/MessageServices/LazySearchService";
 import MessageContextService from "../services/MessageServices/MessageContextService";
 
-// Serviços existentes
 import ShowTicketService from "../services/TicketServices/ShowTicketService";
 import DeleteWhatsAppMessage from "../services/WbotServices/DeleteWhatsAppMessage";
 import SendWhatsAppMedia from "../services/WbotServices/SendWhatsAppMedia";
@@ -23,11 +21,6 @@ type MessageData = {
   quotedMsg?: Message;
 };
 
-// =================================================================
-// NOVAS FUNÇÕES OTIMIZADAS
-// =================================================================
-
-// 📱 CHAT COM SCROLL INFINITO
 export const lazyIndex = async (req: Request, res: Response): Promise<Response> => {
   const { ticketId } = req.params;
   const { 
@@ -80,7 +73,6 @@ export const lazyIndex = async (req: Request, res: Response): Promise<Response> 
   }
 };
 
-// 🔍 BUSCA COM SCROLL INFINITO
 export const lazySearch = async (req: Request, res: Response): Promise<Response> => {
   const { ticketId } = req.params;
   const { 
@@ -110,7 +102,6 @@ export const lazySearch = async (req: Request, res: Response): Promise<Response>
   try {
     console.log(`🔍 Lazy search in ticket ${ticketId}: "${searchTerm}" (page ${page})`);
     
-    // ✅ O serviço agora retorna { messages, hasMore }
     const result = await LazySearchService({
       ticketId: parseInt(ticketId, 10),
       searchParam: searchTerm.trim(),
@@ -124,7 +115,6 @@ export const lazySearch = async (req: Request, res: Response): Promise<Response>
 
     console.log(`✅ Lazy search completed: ${result.messages.length} results found`);
     
-    // ✅ A resposta para o frontend agora é mais enxuta, sem o `count` total.
     return res.json({
       messages: result.messages,
       hasMore: result.hasMore,
@@ -140,7 +130,6 @@ export const lazySearch = async (req: Request, res: Response): Promise<Response>
   }
 };
 
-// 🎯 NAVEGAR PARA MENSAGEM ESPECÍFICA
 export const getMessageContext = async (req: Request, res: Response): Promise<Response> => {
   const { ticketId, messageId } = req.params;
   const { contextSize = '10' } = req.query as { contextSize?: string };
@@ -180,7 +169,6 @@ export const getMessageContext = async (req: Request, res: Response): Promise<Re
   }
 };
 
-// 📊 METADADOS DO TICKET (info rápida sem carregar mensagens)
 export const getTicketInfo = async (req: Request, res: Response): Promise<Response> => {
   const { ticketId } = req.params;
 
@@ -205,16 +193,11 @@ export const getTicketInfo = async (req: Request, res: Response): Promise<Respon
     });
     
   } catch (error: any) {
-    console.error(`❌ Error getting ticket info:`, error);
     return res.status(500).json({ 
       error: "Erro ao buscar informações do ticket" 
     });
   }
 };
-
-// =================================================================
-// FUNÇÕES EXISTENTES MANTIDAS
-// =================================================================
 
 export const store = async (req: Request, res: Response): Promise<Response> => {
   const { ticketId } = req.params;
@@ -257,10 +240,6 @@ export const remove = async (req: Request, res: Response): Promise<Response> => 
     return res.status(500).json({ error: "Erro ao remover mensagem" });
   }
 };
-
-// =================================================================
-// COMPATIBILIDADE: Endpoints antigos redirecionados
-// =================================================================
 
 export const index = async (req: Request, res: Response): Promise<Response> => {
   console.log("⚠️ Using deprecated endpoint. Please migrate to /lazy");

@@ -27,7 +27,6 @@ const LazySearchService = async ({
   fromMe,
   mediaType
 }: LazySearchParams): Promise<SearchResult> => {
-  // 1. ✅ BUSCA INTELIGENTE: Pedimos `limite + 1` para verificar a próxima página.
   const queryLimit = limit + 1;
   const offset = (page - 1) * limit;
 
@@ -36,8 +35,7 @@ const LazySearchService = async ({
   console.time(`OptimizedSearch-Ticket-${ticketId}-Page-${page}`);
 
   try {
-    // 2. ✅ UMA ÚNICA QUERY: Removemos o `COUNT(*)` que era o principal gargalo.
-    //    Esta query agora faz todo o trabalho.
+
     const messagesQuery = `
       SELECT 
         id, body, mediaUrl, mediaType, isDeleted, 
@@ -57,18 +55,16 @@ const LazySearchService = async ({
       replacements: [ticketId, booleanSearchParam, queryLimit, offset]
     });
 
-    // 3. ✅ VERIFICAÇÃO RÁPIDA: Se o total de mensagens for maior que o limite,
-    //    sabemos que há mais páginas e removemos o item extra.
     let hasMore = false;
     if (messages.length > limit) {
       hasMore = true;
-      messages.pop(); // Remove o 41º item, que serviu apenas para a verificação.
+      messages.pop();
     }
 
     console.timeEnd(`OptimizedSearch-Ticket-${ticketId}-Page-${page}`);
     console.log(`✅ Optimized Search: Found and returning ${messages.length} messages. HasMore: ${hasMore}`);
 
-    // 4. ✅ RESPOSTA ENXUTA: Retornamos apenas o que o frontend precisa para o scroll infinito.
+
     return { messages, hasMore };
 
   } catch (error) {

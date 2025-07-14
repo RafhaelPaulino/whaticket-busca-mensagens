@@ -33,8 +33,7 @@ const ListMessagesService = async ({
   console.time(`ListMessages-Ticket-${ticketId}-Page-${pageNumber}`);
   
   try {
-    // ✅ VERSÃO ULTRA-SIMPLIFICADA: Sem JOINs pesados
-    // Carrega apenas os dados essenciais da mensagem
+
     const query = `
       SELECT 
         id,
@@ -62,7 +61,7 @@ const ListMessagesService = async ({
       WHERE ticketId = ?
     `;
 
-    // ✅ EXECUÇÃO PARALELA
+  
     const [messagesResult, countResult] = await Promise.all([
       database.query(query, {
         type: QueryTypes.SELECT,
@@ -77,7 +76,7 @@ const ListMessagesService = async ({
 
     console.timeEnd(`ListMessages-Ticket-3-Page-${pageNumber}`);
 
-    // ✅ PROCESSAMENTO MÍNIMO - apenas estrutura básica
+ 
     const messages = messagesResult.map(row => ({
       id: row.id,
       body: row.body,
@@ -91,7 +90,7 @@ const ListMessagesService = async ({
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       ticketId: row.ticketId,
-      // ✅ CONTATO E QUOTE VAZIOS - Frontend pode buscar se necessário
+   
       contact: null,
       quotedMsg: null
     }));
@@ -102,7 +101,7 @@ const ListMessagesService = async ({
     console.log(`✅ ListMessages ULTRA-FAST: ${messages.length} messages loaded for ticket ${ticketId}, page ${pageNumber}`);
 
     return {
-      messages: messages.reverse(), // Ordem cronológica (mais antigas primeiro)
+      messages: messages.reverse(), 
       count: total,
       hasMore
     };

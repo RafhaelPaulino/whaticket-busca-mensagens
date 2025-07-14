@@ -41,7 +41,7 @@ const LazyListMessagesService = async ({
 
     switch (direction) {
       case 'initial':
-        // 📱 CARREGAMENTO INICIAL: 20 mensagens mais recentes
+
         query = `
           SELECT 
             id, body, mediaUrl, mediaType, isDeleted, fromMe, \`read\`,
@@ -55,7 +55,6 @@ const LazyListMessagesService = async ({
         break;
 
       case 'up':
-        // ⬆️ SCROLL PARA CIMA: Mensagens mais antigas
         if (!cursorMessageId || !cursorCreatedAt) {
           throw new Error('Cursor required for scroll up');
         }
@@ -76,7 +75,7 @@ const LazyListMessagesService = async ({
         break;
 
       case 'down':
-        // ⬇️ SCROLL PARA BAIXO: Mensagens mais recentes
+       
         if (!cursorMessageId || !cursorCreatedAt) {
           throw new Error('Cursor required for scroll down');
         }
@@ -100,7 +99,7 @@ const LazyListMessagesService = async ({
         throw new Error('Invalid direction');
     }
 
-    // ✅ EXECUÇÃO OTIMIZADA
+
     const messagesResult = await database.query(query, {
       type: QueryTypes.SELECT,
       replacements: queryParams
@@ -108,7 +107,7 @@ const LazyListMessagesService = async ({
 
     console.timeEnd(`LazyList-${direction}-Ticket-${ticketId}`);
 
-    // ✅ PROCESSAMENTO dos resultados
+
     const messages = messagesResult.map(row => ({
       id: row.id,
       body: row.body,
@@ -122,14 +121,14 @@ const LazyListMessagesService = async ({
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       ticketId: row.ticketId,
-      contact: null, // Carregado separadamente se necessário
+      contact: null, 
       quotedMsg: null
     }));
 
-    // ✅ ORDEM CORRETA (sempre cronológica para o frontend)
+
     const orderedMessages = direction === 'down' ? messages.reverse() : messages;
 
-    // ✅ CURSORS para próximos carregamentos
+
     const hasMore = messages.length === limit;
     const firstMessage = orderedMessages[0];
     const lastMessage = orderedMessages[orderedMessages.length - 1];
