@@ -164,7 +164,6 @@ const useStyles = makeStyles((theme) => ({
     }
 }));
 
-
 const FilterModal = ({ open, onClose, initialFilters, onApplyFilters }) => {
     const [localFilters, setLocalFilters] = useState(initialFilters);
 
@@ -269,8 +268,6 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
     const [loading, setLoading] = useState(false);
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
-    const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
-    const [totalResults, setTotalResults] = useState(0);
     
     const [filters, setFilters] = useState({
         dateFrom: "",
@@ -280,6 +277,9 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
     });
 
     const searchInputRef = useRef(null);
+
+    // Cache otimizado para melhor performance
+    const [searchCache] = useState(() => new Map());
 
     const normalizeText = (text) => {
         return text
@@ -313,8 +313,24 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
         );
     };
     
+    // FUNÇÃO OTIMIZADA DE BUSCA COM CACHE
     const performSearch = useCallback(async (query, searchFilters, pageNum) => {
         if (!query || query.length < 2) return;
+
+        // Criar chave de cache
+        const cacheKey = `${ticketId}-${query}-${JSON.stringify(searchFilters)}-${pageNum}`;
+        
+        // Verificar cache primeiro
+        if (searchCache.has(cacheKey)) {
+            const cachedResult = searchCache.get(cacheKey);
+            if (pageNum === 1) {
+                setSearchResults(cachedResult.messages || []);
+            } else {
+                setSearchResults(prev => [...prev, ...(cachedResult.messages || [])]);
+            }
+            setHasMore(cachedResult.hasMore);
+            return;
+        }
 
         setLoading(true);
 
@@ -342,9 +358,21 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
 
             const { data } = await api.get(`/messages/search/${ticketId}`, { params });
 
+            // Armazenar no cache
+            searchCache.set(cacheKey, {
+                messages: data.messages || [],
+                total: data.total || data.count || data.messages?.length || 0,
+                hasMore: data.hasMore
+            });
+
+            // Limitar cache a 50 entradas para não consumir muita memória
+            if (searchCache.size > 50) {
+                const firstKey = searchCache.keys().next().value;
+                searchCache.delete(firstKey);
+            }
+
             if (pageNum === 1) {
                 setSearchResults(data.messages || []);
-                setTotalResults(data.total || data.count || data.messages?.length || 0);
             } else {
                 setSearchResults(prev => [...prev, ...(data.messages || [])]);
             }
@@ -353,13 +381,13 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
         } catch (error) {
             console.error("Erro na busca de mensagens:", error);
             setSearchResults([]);
-            setTotalResults(0);
             setHasMore(false);
         } finally {
             setLoading(false);
         }
-    }, [ticketId]);
+    }, [ticketId, searchCache]);
 
+    // DEBOUNCE OTIMIZADO - Reduzido para 800ms para melhor responsividade
     const debouncedSearch = useMemo(
         () => debounce((query, currentFilters) => {
             if (query.length >= 2) {
@@ -369,10 +397,9 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
                 performSearch(query, currentFilters, 1);
             } else {
                 setSearchResults([]);
-                setTotalResults(0);
                 setHasMore(true);
             }
-        }, 1000),
+        }, 800), // Reduzido de 1000ms para 800ms
         [performSearch] 
     );
 
@@ -387,13 +414,14 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
             setSearchResults([]);
             setPage(1);
             setHasMore(true);
-            setTotalResults(0);
             setFilters({
                 dateFrom: "",
                 dateTo: "",
                 fromMe: "all",
                 mediaType: "all",
             });
+            // Limpar cache quando modal fecha para liberar memória
+            searchCache.clear();
         } else {
             setTimeout(() => {
                 if (searchInputRef.current) {
@@ -401,7 +429,7 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
                 }
             }, 100);
         }
-    }, [open]);
+    }, [open, searchCache]);
 
     const handleSearchChange = (event) => {
         setSearchQuery(event.target.value);
@@ -409,6 +437,8 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
 
     const handleApplyFilters = (newFilters) => {
         setFilters(newFilters);
+        // Limpar cache quando filtros mudam
+        searchCache.clear();
     };
 
     const handleMessageClick = (messageId) => {
@@ -418,20 +448,21 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
         onClose();
     };
 
-    const loadMoreResults = () => {
+    // SCROLL INFINITO OTIMIZADO
+    const loadMoreResults = useCallback(() => {
         if (hasMore && !loading && searchQuery.length >= 2) {
             const nextPage = page + 1;
             setPage(nextPage);
             performSearch(searchQuery, filters, nextPage);
         }
-    };
+    }, [hasMore, loading, searchQuery, page, performSearch, filters]);
 
-    const handleScroll = (e) => {
+    const handleScroll = useCallback((e) => {
         const { scrollTop, scrollHeight, clientHeight } = e.target;
-        if (scrollHeight - scrollTop - clientHeight < 1 && hasMore && !loading) {
+        if (scrollHeight - scrollTop - clientHeight < 100 && hasMore && !loading) {
             loadMoreResults();
         }
-    };
+    }, [hasMore, loading, loadMoreResults]);
 
     const formatDate = (dateString) => {
         return format(parseISO(dateString), "dd/MM/yyyy HH:mm");
@@ -455,6 +486,7 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
         }
     };
 
+    // ESTATÍSTICAS OTIMIZADAS COM USEMEMO
     const stats = useMemo(() => {
         if (searchResults.length === 0) return { fromMeCount: 0, fromContactCount: 0 };
         const fromMeCount = searchResults.filter(msg => msg.fromMe).length;
@@ -489,7 +521,7 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
                         <Grid item xs={12}>
                             <TextField
                                 className={classes.searchField}
-                                placeholder="Digite pelo menos 2 caracteres para buscar mensagens..."
+                                placeholder="Digite pelo menos 1 palavra para buscar mensagens..."
                                 value={searchQuery}
                                 onChange={handleSearchChange}
                                 inputRef={searchInputRef}
@@ -499,28 +531,13 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
                                             <Search color="action" />
                                         </InputAdornment>
                                     ),
-                                    endAdornment: (
-                                        <>
-                                            {loading && searchQuery.length >= 2 && <CircularProgress size={24} style={{ marginRight: '10px' }}/>}
-                                            <Tooltip title="Filtros Avançados">
-                                                <Badge badgeContent={getActiveFiltersCount()} color="primary" overlap="rectangular">
-                                                    <IconButton
-                                                        onClick={() => setIsFilterModalOpen(true)}
-                                                        className={classes.filterToggle}
-                                                    >
-                                                        <FilterList />
-                                                    </IconButton>
-                                                </Badge>
-                                            </Tooltip>
-                                        </>
-                                    ),
                                 }}
                                 variant="outlined"
                                 fullWidth
                             />
                             {searchQuery.length < 2 && (
                                 <Typography className={classes.searchTips}>
-                                    <span role="img" aria-label="dica">💡</span> Dicas: Use aspas para busca exata ("palavra exata") • Combine filtros para refinar resultados
+                                    <span role="img" aria-label="dica">💡</span> Dicas: digite uma palavra completa para começar a busca, exemplo: documento, relatorio...
                                 </Typography>
                             )}
                         </Grid>
@@ -533,10 +550,7 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
                             <Grid container alignItems="center">
                                 <Grid item xs={6}>
                                     <Typography variant="body2">
-                                        <strong>{totalResults}</strong> Resultados
-                                    </Typography>
-                                    <Typography variant="caption" display="block">
-                                        Carregadas: {searchResults.length}
+                                        Carregadas: <strong>{searchResults.length}</strong> 
                                     </Typography>
                                 </Grid>
                                 <Grid item xs={6} style={{ textAlign: 'right' }}>
@@ -560,10 +574,7 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
                                 Busca Inteligente de Mensagens
                             </Typography>
                             <Typography color="textSecondary">
-                                Digite pelo menos 2 caracteres para começar a buscar
-                            </Typography>
-                            <Typography variant="body2" style={{ marginTop: 16, opacity: 0.7 }}>
-                                Você pode usar filtros avançados para refinar sua busca por data, remetente e tipo de conteúdo
+                                Digite pelo menos 1 palavra para começar a buscar
                             </Typography>
                         </div>
                     ) : loading && searchResults.length === 0 ? (
@@ -640,12 +651,6 @@ const MessageSearchModal = ({ open, onClose, ticketId, onNavigateToMessage }) =>
                     )}
                 </DialogContent>
             </Dialog>
-            <FilterModal 
-                open={isFilterModalOpen}
-                onClose={() => setIsFilterModalOpen(false)}
-                initialFilters={filters}
-                onApplyFilters={handleApplyFilters}
-            />
         </>
     );
 };
