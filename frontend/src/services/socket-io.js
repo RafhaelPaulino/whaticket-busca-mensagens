@@ -91,6 +91,17 @@ function connectToSocket() {
       console.log("💬 Evento message recebido:", data.action);
     });
 
+    socketInstance.on("distribution", (data) => {
+      console.log("🔄 Evento distribution recebido:", data.action);
+      
+      // Disparar evento customizado para componentes React
+      if (data.action === "update" || data.action === "create") {
+        window.dispatchEvent(new CustomEvent("distributionUpdate", {
+          detail: data.distribution
+        }));
+      }
+    });
+
     return socketInstance;
     
   } catch (error) {

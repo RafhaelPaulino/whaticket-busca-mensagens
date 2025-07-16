@@ -21,6 +21,7 @@ import toastError from "../../errors/toastError";
 import ColorPicker from "../ColorPicker";
 import { IconButton, InputAdornment } from "@material-ui/core";
 import { Colorize } from "@material-ui/icons";
+import DistributionToggle from "../DistributionToggle";
 
 const useStyles = makeStyles(theme => ({
 	root: {
@@ -213,6 +214,17 @@ const QueueModal = ({ open, onClose, queueId }) => {
 										margin="dense"
 									/>
 								</div>
+
+								{queueId && (
+									<div style={{ marginTop: 16, padding: 16, border: '1px solid #e0e0e0', borderRadius: 4 }}>
+										<DistributionToggle 
+											queueId={queueId}
+											onUpdate={() => {
+												// Opcional: atualizar algo se necessário
+											}}
+										/>
+									</div>
+								)}
 							</DialogContent>
 							<DialogActions>
 								<Button

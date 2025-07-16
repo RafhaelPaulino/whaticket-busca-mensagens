@@ -27,6 +27,7 @@ import { DeleteOutline, Edit } from "@material-ui/icons";
 import QueueModal from "../../components/QueueModal";
 import { toast } from "react-toastify";
 import ConfirmationModal from "../../components/ConfirmationModal";
+import DistributionToggle from "../../components/DistributionToggle";
 
 const useStyles = makeStyles((theme) => ({
   mainPaper: {
@@ -204,6 +205,9 @@ const Queues = () => {
                 {i18n.t("queues.table.greeting")}
               </TableCell>
               <TableCell align="center">
+                Distribuição Automática
+              </TableCell>
+              <TableCell align="center">
                 {i18n.t("queues.table.actions")}
               </TableCell>
             </TableRow>
@@ -237,6 +241,14 @@ const Queues = () => {
                     </div>
                   </TableCell>
                   <TableCell align="center">
+                    <DistributionToggle 
+                      queueId={queue.id}
+                      onUpdate={() => {
+                        // Opcional: recarregar filas se necessário
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell align="center">
                     <IconButton
                       size="small"
                       onClick={() => handleEditQueue(queue)}
@@ -256,7 +268,7 @@ const Queues = () => {
                   </TableCell>
                 </TableRow>
               ))}
-              {loading && <TableRowSkeleton columns={4} />}
+              {loading && <TableRowSkeleton columns={5} />}
             </>
           </TableBody>
         </Table>
