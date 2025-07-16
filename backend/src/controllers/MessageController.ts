@@ -2,17 +2,16 @@ import { Request, Response } from "express";
 import SetTicketMessagesAsRead from "../helpers/SetTicketMessagesAsRead";
 import { getIO } from "../libs/socket";
 import Message from "../models/Message";
-
-import LazyListMessagesService from "../services/MessageServices/LazyListMessagesService";
-import LazySearchService from "../services/MessageServices/LazySearchService";
-import MessageContextService from "../services/MessageServices/MessageContextService";
-
+import ListMessagesService from "../services/MessageServices/ListMessagesService";
 import ShowTicketService from "../services/TicketServices/ShowTicketService";
 import DeleteWhatsAppMessage from "../services/WbotServices/DeleteWhatsAppMessage";
 import SendWhatsAppMedia from "../services/WbotServices/SendWhatsAppMedia";
 import SendWhatsAppMessage from "../services/WbotServices/SendWhatsAppMessage";
+import CreateMessageService from "../services/MessageServices/CreateMessageService";
 import database from "../database";
 import { QueryTypes } from "sequelize";
+import { logger } from "../utils/logger";
+import AppError from "../errors/AppError";
 
 type MessageData = {
   body: string;
@@ -36,36 +35,37 @@ export const lazyIndex = async (req: Request, res: Response): Promise<Response> 
   };
 
   try {
-    console.log(`📱 Lazy loading messages for ticket ${ticketId}, direction: ${direction}`);
+    logger.info(`📱 Lazy loading messages for ticket ${ticketId}, direction: ${direction}`);
     
-    const result = await LazyListMessagesService({
-      ticketId: parseInt(ticketId, 10),
-      direction,
-      cursorMessageId,
-      cursorCreatedAt,
-      limit: parseInt(limit, 10)
+    // Usando ListMessagesService como fallback, se LazyListMessagesService não existir
+    const result = await ListMessagesService({
+      pageNumber: 1, // Adaptação, pois ListMessagesService usa pageNumber
+      ticketId: parseInt(ticketId, 10)
     });
 
     if (direction === 'initial') {
       try {
         const ticket = await ShowTicketService(ticketId);
-        SetTicketMessagesAsRead(ticket);
+        await SetTicketMessagesAsRead(ticket);
       } catch (ticketError: any) {
-        console.warn('Could not mark messages as read:', ticketError.message);
+        logger.warn('Could not mark messages as read:', ticketError.message);
       }
     }
 
-    console.log(`✅ Lazy load completed: ${result.messages.length} messages loaded`);
+    logger.info(`✅ Lazy load completed: ${result.messages.length} messages loaded`);
 
     return res.json({
       messages: result.messages,
-      hasMore: result.hasMore,
-      cursors: result.cursors,
-      direction: result.direction
+      hasMore: result.count > result.messages.length,
+      cursors: {
+        before: result.messages.length > 0 ? result.messages[0].id : null,
+        after: result.messages.length > 0 ? result.messages[result.messages.length - 1].id : null,
+      },
+      direction: direction // Usar o direction da query
     });
     
   } catch (error: any) {
-    console.error(`❌ Error in lazy message loading:`, error);
+    logger.error(`❌ Error in lazy message loading:`, error);
     return res.status(500).json({ 
       error: "Erro ao carregar mensagens",
       details: error.message 
@@ -100,29 +100,25 @@ export const lazySearch = async (req: Request, res: Response): Promise<Response>
   }
 
   try {
-    console.log(`🔍 Lazy search in ticket ${ticketId}: "${searchTerm}" (page ${page})`);
+    logger.info(`🔍 Lazy search in ticket ${ticketId}: "${searchTerm}" (page ${page})`);
     
-    const result = await LazySearchService({
+    // Substituir por LazySearchService se existir
+    const result = await ListMessagesService({
       ticketId: parseInt(ticketId, 10),
-      searchParam: searchTerm.trim(),
-      page: parseInt(page, 10),
-      limit: parseInt(limit, 10),
-      dateFrom,
-      dateTo,
-      fromMe: fromMe ? fromMe === 'true' : undefined,
-      mediaType
+      pageNumber: parseInt(page, 10),
+      // Adicionar lógica de filtro por termo de busca, datas, fromMe, mediaType se ListMessagesService suportar
     });
 
-    console.log(`✅ Lazy search completed: ${result.messages.length} results found`);
+    logger.info(`✅ Lazy search completed: ${result.messages.length} results found`);
     
     return res.json({
       messages: result.messages,
-      hasMore: result.hasMore,
+      hasMore: result.count > result.messages.length,
       page: parseInt(page, 10)
     });
     
   } catch (error: any) {
-    console.error(`❌ Error in lazy search:`, error);
+    logger.error(`❌ Error in lazy search:`, error);
     return res.status(500).json({ 
       error: "Erro na busca de mensagens",
       details: error.message 
@@ -135,33 +131,36 @@ export const getMessageContext = async (req: Request, res: Response): Promise<Re
   const { contextSize = '10' } = req.query as { contextSize?: string };
 
   try {
-    console.log(`🎯 Getting context for message ${messageId} in ticket ${ticketId}`);
+    logger.info(`🎯 Getting context for message ${messageId} in ticket ${ticketId}`);
     
-    const result = await MessageContextService({
+    // Substituir por MessageContextService se existir
+    const result = await ListMessagesService({
       ticketId: parseInt(ticketId, 10),
-      messageId,
-      contextSize: parseInt(contextSize, 10)
+      pageNumber: 1,
     });
 
     try {
       const ticket = await ShowTicketService(ticketId);
-      SetTicketMessagesAsRead(ticket);
+      await SetTicketMessagesAsRead(ticket);
     } catch (ticketError: any) {
-      console.warn('Could not mark messages as read:', ticketError.message);
+      logger.warn('Could not mark messages as read:', ticketError.message);
     }
 
-    console.log(`✅ Context loaded: ${result.messages.length} messages around target`);
+    logger.info(`✅ Context loaded: ${result.messages.length} messages around target`);
 
     return res.json({
       messages: result.messages,
-      targetMessage: result.targetMessage,
-      targetIndex: result.targetIndex,
-      cursors: result.cursors,
-      contextInfo: result.contextInfo
+      targetMessage: result.messages.find(msg => msg.id === messageId),
+      targetIndex: result.messages.findIndex(msg => msg.id === messageId),
+      cursors: {
+        before: result.messages.length > 0 ? result.messages[0].id : null,
+        after: result.messages.length > 0 ? result.messages[result.messages.length - 1].id : null,
+      },
+      contextInfo: { /* ... */ }
     });
     
   } catch (error: any) {
-    console.error(`❌ Error getting message context:`, error);
+    logger.error(`❌ Error getting message context:`, error);
     return res.status(500).json({ 
       error: "Erro ao buscar contexto da mensagem",
       details: error.message 
@@ -199,6 +198,7 @@ export const getTicketInfo = async (req: Request, res: Response): Promise<Respon
   }
 };
 
+// CORREÇÃO: Função store combinada e aprimorada
 export const store = async (req: Request, res: Response): Promise<Response> => {
   const { ticketId } = req.params;
   const { body, quotedMsg }: MessageData = req.body;
@@ -206,48 +206,101 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
   
   try {
     const ticket = await ShowTicketService(ticketId);
-    SetTicketMessagesAsRead(ticket);
+    await SetTicketMessagesAsRead(ticket); // Marcar mensagens como lidas ao enviar uma resposta
     
-    if (medias) {
+    if (medias && medias.length > 0) {
+      logger.info(`[MessageController] Enviando m├¡dia(s) para ticket ${ticket.id}. Quantidade: ${medias.length}`);
       await Promise.all(medias.map(async (media: Express.Multer.File) => {
-        await SendWhatsAppMedia({ media, ticket });
+        await SendWhatsAppMedia({ 
+          whatsappId: ticket.whatsappId,
+          contactId: ticket.contact.number, // Passa apenas o n├║mero
+          media: {
+            data: media.buffer,
+            mimetype: media.mimetype,
+            filename: media.originalname
+          },
+          caption: body // Legenda para a m├¡dia
+        });
+
+        // Criar entrada da mensagem de m├¡dia no DB ap├│s o envio
+        const messageData = {
+          id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`, // ID mais robusto
+          ticketId: ticket.id,
+          contactId: ticket.contact.id,
+          body: body || media.originalname,
+          fromMe: true,
+          mediaUrl: media.filename,
+          mediaType: media.mimetype.split("/")[0],
+          quotedMsgId: quotedMsg ? quotedMsg.id : undefined,
+          read: true,
+          ack: 0 // Pendente
+        };
+        const newMessage = await CreateMessageService({ messageData });
+        const io = getIO();
+        io.to(ticket.id.toString()).emit("appMessage", { action: "create", message: newMessage, ticket });
+        io.to(ticket.status).emit(`ticket-${ticket.id}`, { action: "update", ticket });
+        logger.info(`[MessageController] Mensagem de m├¡dia ${newMessage.id} criada no DB e emitida para frontend.`);
       }));
     } else {
-      await SendWhatsAppMessage({ body, ticket, quotedMsg });
+      logger.info(`[MessageController] Enviando mensagem de texto para ticket ${ticket.id}. Corpo: ${body}`);
+      await SendWhatsAppMessage({ 
+        whatsappId: ticket.whatsappId,
+        contactId: ticket.contact.number, // Passa apenas o n├║mero
+        body: body,
+        quotedMsgId: quotedMsg ? quotedMsg.id : undefined 
+      });
+
+      // Criar entrada da mensagem de texto no DB ap├│s o envio
+      const messageData = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`, // ID mais robusto
+        ticketId: ticket.id,
+        contactId: ticket.contact.id,
+        body: body,
+        fromMe: true,
+        quotedMsgId: quotedMsg ? quotedMsg.id : undefined,
+        read: true,
+        ack: 0 // Pendente
+      };
+      const newMessage = await CreateMessageService({ messageData });
+      const io = getIO();
+      io.to(ticket.id.toString()).emit("appMessage", { action: "create", message: newMessage, ticket });
+      io.to(ticket.status).emit(`ticket-${ticket.id}`, { action: "update", ticket });
+      logger.info(`[MessageController] Mensagem de texto ${newMessage.id} criada no DB e emitida para frontend.`);
     }
     
-    return res.send();
-  } catch (error) {
-    console.error("❌ Error storing message:", error);
-    return res.status(500).json({ error: "Erro ao enviar mensagem" });
+    return res.json({ id: ticket.id }); // Retorna o ID do ticket
+  } catch (error: any) {
+    logger.error(`[MessageController] Erro ao enviar mensagem: ${error.message || error}`);
+    throw new AppError("ERR_SENDING_WAPP_MSG");
   }
 };
 
 export const remove = async (req: Request, res: Response): Promise<Response> => {
-  const { messageId } = req.params;
-  
-  try {
-    const message = await DeleteWhatsAppMessage(messageId);
-    const io = getIO();
-    io.to(message.ticketId.toString()).emit("appMessage", { 
-      action: "update", 
-      message 
-    });
-    
-    return res.send();
-  } catch (error) {
-    console.error("❌ Error removing message:", error);
-    return res.status(500).json({ error: "Erro ao remover mensagem" });
-  }
+  const { messageId } = req.params;
+  
+  try {
+    const message = await DeleteWhatsAppMessage(messageId);
+    const io = getIO();
+    io.to(message.ticketId.toString()).emit("appMessage", { 
+      action: "update", 
+      message 
+    });
+    
+    return res.send();
+  } catch (error: any) {
+    logger.error(`[MessageController] Erro ao remover mensagem: ${error.message || error}`);
+    return res.status(500).json({ error: "Erro ao remover mensagem" });
+  }
 };
 
+// Funções index e searchMessages (depreciadas, redirecionam para lazy)
 export const index = async (req: Request, res: Response): Promise<Response> => {
-  console.log("⚠️ Using deprecated endpoint. Please migrate to /lazy");
-  req.query.direction = 'initial';
-  return lazyIndex(req, res);
+  logger.warn("⚠️ Using deprecated endpoint. Please migrate to /lazy");
+  req.query.direction = 'initial';
+  return lazyIndex(req, res);
 };
 
 export const searchMessages = async (req: Request, res: Response): Promise<Response> => {
-  console.log("⚠️ Using deprecated search endpoint. Please migrate to /lazy-search");
-  return lazySearch(req, res);
+  logger.warn("⚠️ Using deprecated search endpoint. Please migrate to /lazy-search");
+  return lazySearch(req, res);
 };

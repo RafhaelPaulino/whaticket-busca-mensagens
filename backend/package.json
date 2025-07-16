@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-   "scripts": {
+  "scripts": {
     "build": "tsc",
     "watch": "tsc -w",
     "start": "node dist/server.js",
@@ -27,6 +27,7 @@
     "@sentry/node": "^5.29.2",
     "@types/lodash": "^4.17.5",
     "@types/pino": "^6.3.4",
+    "@whiskeysockets/baileys": "^6.7.2",
     "axios": "^1.10.0",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.5",
@@ -49,7 +50,6 @@
     "sequelize-typescript": "^1.1.0",
     "socket.io": "^3.0.5",
     "uuid": "^8.3.2",
-    "whatsapp-web.js": "^1.25.0",
     "yup": "^0.32.8"
   },
   "devDependencies": {

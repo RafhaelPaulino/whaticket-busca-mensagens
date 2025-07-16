@@ -1,23 +1,19 @@
-import gracefulShutdown from "http-graceful-shutdown";
-import { createServer } from "http";
 import app from "./app";
 import { initIO } from "./libs/socket";
 import { logger } from "./utils/logger";
-import { StartAllWhatsAppsSessions } from "./services/WbotServices/StartAllWhatsAppsSessions";
+import StartAllWhatsAppsSessions from "./services/WbotServices/StartAllWhatsAppsSessions"; // Correção: Importação como default
 
-// Criar servidor HTTP explicitamente
-const server = createServer(app);
-
-// Inicializar Socket.IO com CORS
-initIO(server);
-
-// Iniciar servidor
-server.listen(process.env.PORT, () => {
+const server = app.listen(process.env.PORT, () => {
   logger.info(`Server started on port: ${process.env.PORT}`);
 });
 
-// Inicializar WhatsApp sessions
-StartAllWhatsAppsSessions();
+initIO(server);
+StartAllWhatsAppsSessions(); // Chamada da função
 
-// Graceful shutdown
-gracefulShutdown(server);
+process.on("SIGINT", () => {
+  logger.info("Server shutting down...");
+  server.close(() => {
+    logger.info("Server gracefully shut down.");
+    process.exit(0);
+  });
+});
