@@ -19,6 +19,9 @@ import { Can } from "../Can";
 import TicketsQueueSelect from "../TicketsQueueSelect";
 import { Button } from "@material-ui/core";
 
+// 1. Importe o useContext e o nosso TicketsContext
+import TicketsContext from "../../context/TicketsContext";
+
 const useStyles = makeStyles((theme) => ({
     ticketsWrapper: {
         position: "relative",
@@ -91,11 +94,14 @@ const TicketsManager = () => {
     const userQueueIds = user.queues.map((q) => q.id);
     const [selectedQueueIds, setSelectedQueueIds] = useState(userQueueIds || []);
 
+    // 2. Pegue a 'key' do contexto
+    const { key } = useContext(TicketsContext);
+
     useEffect(() => {
         if (user.profile.toUpperCase() === "ADMIN") {
             setShowAllTickets(true);
         }
-    }, []);
+    }, [user.profile]);
 
     useEffect(() => {
         if (tab === "search") {
@@ -137,6 +143,7 @@ const TicketsManager = () => {
     };
 
     return (
+        // ✅ A 'key' foi REMOVIDA daqui para não recarregar o painel inteiro
         <Paper elevation={0} variant="outlined" className={classes.ticketsWrapper}>
             <NewTicketModal
                 modalOpen={newTicketModalOpen}
@@ -258,7 +265,9 @@ const TicketsManager = () => {
                     />
                 </Tabs>
                 <Paper className={classes.ticketsWrapper}>
+                    {/* 3. A 'key' foi MOVIDA para cá, para recarregar apenas as listas */}
                     <TicketsList
+                        key={`open-${key}`}
                         status="open"
                         showAll={showAllTickets}
                         selectedQueueIds={selectedQueueIds}
@@ -266,6 +275,7 @@ const TicketsManager = () => {
                         style={applyPanelStyle("open")}
                     />
                     <TicketsList
+                        key={`pending-${key}`}
                         status="pending"
                         selectedQueueIds={selectedQueueIds}
                         updateCount={(val) => setPendingCount(val)}
@@ -275,6 +285,7 @@ const TicketsManager = () => {
             </TabPanel>
             <TabPanel value={tab} name="closed" className={classes.ticketsWrapper}>
                 <TicketsList
+                    key={`closed-${key}`}
                     status="closed"
                     showAll={true}
                     selectedQueueIds={selectedQueueIds}
@@ -282,6 +293,7 @@ const TicketsManager = () => {
             </TabPanel>
             <TabPanel value={tab} name="search" className={classes.ticketsWrapper}>
                 <TicketsList
+                    key={`search-${key}`}
                     searchParam={searchParam}
                     showAll={true}
                     selectedQueueIds={selectedQueueIds}

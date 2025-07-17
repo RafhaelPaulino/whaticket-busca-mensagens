@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useReducer, useRef, useCallback } from "react";
 import { isSameDay, parseISO, format } from "date-fns";
-import openSocket from "../../services/socket-io";
+import connectToSocket from "../../services/socket-io";
 import clsx from "clsx";
 
 import { green } from "@material-ui/core/colors";
@@ -259,35 +259,47 @@ const reducer = (state, action) => {
 	switch (action.type) {
 		case "LOAD_MESSAGES": {
 			const messages = action.payload;
-			const newMessages = [];
+			const newState = [...state];
+			
 			messages.forEach((message) => {
-				const messageIndex = state.findIndex((m) => m.id === message.id);
+				const messageIndex = newState.findIndex((m) => m.id === message.id);
 				if (messageIndex === -1) {
-					newMessages.push(message);
+					newState.push({ ...message });
 				}
 			});
-			return [...newMessages, ...state].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+			
+			return newState.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 		}
 		case "LOAD_CONTEXT": {
-			return action.payload.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+			return action.payload.map(msg => ({ ...msg })).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 		}
 		case "ADD_MESSAGE": {
 			const newMessage = action.payload;
-			const messageIndex = state.findIndex((m) => m.id === newMessage.id);
+			console.log("💬 ADD_MESSAGE - Nova mensagem:", newMessage.id, newMessage.body?.substring(0, 50));
+			
+			const newState = [...state];
+			const messageIndex = newState.findIndex((m) => m.id === newMessage.id);
+			
 			if (messageIndex !== -1) {
-				state[messageIndex] = newMessage;
+				newState[messageIndex] = { ...newMessage };
 			} else {
-				state.push(newMessage);
+				newState.push({ ...newMessage });
 			}
-			return [...state];
+			
+			return newState.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
 		}
 		case "UPDATE_MESSAGE": {
 			const messageToUpdate = action.payload;
-			const messageIndex = state.findIndex((m) => m.id === messageToUpdate.id);
+			console.log("🔄 UPDATE_MESSAGE - Atualizando mensagem:", messageToUpdate.id, "ACK:", messageToUpdate.ack);
+			
+			const newState = [...state];
+			const messageIndex = newState.findIndex((m) => m.id === messageToUpdate.id);
+			
 			if (messageIndex !== -1) {
-				state[messageIndex] = messageToUpdate;
+				newState[messageIndex] = { ...messageToUpdate };
 			}
-			return [...state];
+			
+			return newState;
 		}
 		case "RESET":
 			return [];
@@ -309,15 +321,11 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 	const [anchorEl, setAnchorEl] = useState(null);
 	const messageOptionsMenuOpen = Boolean(anchorEl);
 	const isMountedRef = useRef(true);
+	const socketRef = useRef(null);
 
-	const scrollToBottom = useCallback(() => {
-		if (lastMessageRef.current) {
-			lastMessageRef.current.scrollIntoView({ behavior: "smooth" });
-		}
-	}, []);
-
+	// Função de fetch com controle de duplicação
 	const fetchMessages = useCallback(async (page) => {
-		if (isContextMode) return;
+		if (isContextMode || loading || !ticketId) return;
 		
 		setLoading(true);
 		try {
@@ -327,7 +335,11 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 			dispatch({ type: "LOAD_MESSAGES", payload: data.messages });
 			setHasMore(data.hasMore);
 			if (page === 1) {
-				scrollToBottom();
+				setTimeout(() => {
+					if (lastMessageRef.current) {
+						lastMessageRef.current.scrollIntoView({ behavior: "smooth" });
+					}
+				}, 100);
 			}
 		} catch (err) {
 			toastError(err);
@@ -336,22 +348,21 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 				setLoading(false);
 			}
 		}
-	}, [ticketId, scrollToBottom, isContextMode]);
+	}, [ticketId, isContextMode, loading]);
 
 	const fetchMessageContext = useCallback(async (msgId) => {
+		if (!ticketId || loading) return;
+		
 		setLoading(true);
 		setIsContextMode(true);
 		
 		try {
 			const { data } = await api.get(`/messages/${ticketId}/context/${msgId}`);
-			
 			dispatch({ type: "LOAD_CONTEXT", payload: data.messages });
 			setHasMore(true);
-			
 		} catch (err) {
 			console.error("Erro ao carregar contexto da mensagem:", err);
 			toastError("Erro ao carregar o contexto da mensagem.");
-			
 			setIsContextMode(false);
 			fetchMessages(1);
 		} finally {
@@ -361,17 +372,27 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 		}
 	}, [ticketId, fetchMessages]);
 
+	// EFEITO PRINCIPAL - só executa quando ticketId ou messageToScrollToId mudam
 	useEffect(() => {
+		if (!ticketId) return;
+
+		console.log("🔄 MessagesList - Mudança de ticket:", ticketId, messageToScrollToId);
+
 		dispatch({ type: "RESET" });
 		setPageNumber(1);
 		setIsContextMode(false);
 
-		if (messageToScrollToId) {
-			fetchMessageContext(messageToScrollToId);
-		} else {
-			fetchMessages(1);
-		}
-	}, [ticketId, messageToScrollToId, fetchMessageContext, fetchMessages]);
+		// Delay para evitar múltiplas chamadas
+		const timeout = setTimeout(() => {
+			if (messageToScrollToId) {
+				fetchMessageContext(messageToScrollToId);
+			} else {
+				fetchMessages(1);
+			}
+		}, 100);
+
+		return () => clearTimeout(timeout);
+	}, [ticketId, messageToScrollToId]);
 
 	useEffect(() => {
 		if (messageToScrollToId && messagesList.length > 0 && !loading) {
@@ -402,25 +423,104 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 	
 	useEffect(() => {
 		isMountedRef.current = true;
-		return () => { isMountedRef.current = false; };
+		return () => { 
+			isMountedRef.current = false; 
+		};
 	}, []);
 
+	// Socket.IO - corrigido para evitar listeners duplicados
 	useEffect(() => {
-		const socket = openSocket();
-		socket.on("connect", () => socket.emit("joinChatBox", ticketId));
-		socket.on("appMessage", (data) => {
-			if (data.action === "create") {
-				dispatch({ type: "ADD_MESSAGE", payload: data.message });
-				if (!isContextMode) {
-					scrollToBottom();
+		if (!ticketId) return;
+
+		console.log("🔌 Configurando Socket.IO - MessagesList para ticket:", ticketId);
+
+		const socket = connectToSocket();
+		if (!socket || !socket.on) {
+			console.error("❌ Erro ao obter instância do socket");
+			return;
+		}
+
+		socketRef.current = socket;
+
+		const handleConnect = () => {
+			if (!isMountedRef.current) return;
+			console.log("🔌 Socket conectado - MessagesList para ticket:", ticketId);
+			
+			// EMITIR: joinChatBox com delay para garantir processamento
+			setTimeout(() => {
+				if (isMountedRef.current && socketRef.current && socketRef.current.connected) {
+					console.log("📨 Emitindo joinChatBox para ticket:", ticketId);
+					socketRef.current.emit("joinChatBox", ticketId);
 				}
+			}, 150);
+		};
+
+		const handleAppMessage = (data) => {
+			if (!isMountedRef.current) return;
+			
+			console.log("📨 Evento appMessage recebido:", data.action, data.message?.id, "ACK:", data.message?.ack);
+			
+			// FILTRAR: apenas mensagens do ticket atual
+			if (data.ticket?.id && data.ticket.id !== parseInt(ticketId)) {
+				console.log("📨 Mensagem não é para o ticket atual, ignorando");
+				return;
 			}
-			if (data.action === "update") {
+			
+			if (data.action === "create" && data.message) {
+				console.log("📨 ✅ ADICIONANDO nova mensagem:", data.message.body?.substring(0, 50));
+				dispatch({ type: "ADD_MESSAGE", payload: data.message });
+				
+				// SCROLL: automático para nova mensagem
+				setTimeout(() => {
+					if (isMountedRef.current && lastMessageRef.current) {
+						console.log("📨 Fazendo scroll para a nova mensagem");
+						lastMessageRef.current.scrollIntoView({ behavior: "smooth" });
+					}
+				}, 100);
+			}
+			
+			if (data.action === "update" && data.message) {
+				console.log("📨 ✅ ATUALIZANDO ACK da mensagem:", data.message.id, "Novo ACK:", data.message.ack);
 				dispatch({ type: "UPDATE_MESSAGE", payload: data.message });
 			}
-		});
-		return () => { socket.disconnect(); };
-	}, [ticketId, scrollToBottom, isContextMode]);
+		};
+
+		const handleConnectError = (error) => {
+			if (!isMountedRef.current) return;
+			console.error("❌ Erro conexão socket MessagesList:", error.message);
+		};
+
+		const handleDisconnect = (reason) => {
+			if (!isMountedRef.current) return;
+			console.log("🔌 Socket desconectado MessagesList:", reason);
+		};
+
+		// CONFIGURAR: listeners apenas uma vez
+		socket.on("connect", handleConnect);
+		socket.on("appMessage", handleAppMessage);
+		socket.on("connect_error", handleConnectError);
+		socket.on("disconnect", handleDisconnect);
+
+		console.log("✅ Listeners configurados - MessagesList para ticket:", ticketId);
+
+		// CONECTAR: imediatamente se socket já estiver ativo
+		if (socket.connected) {
+			console.log("🔌 Socket já conectado, configurando imediatamente");
+			handleConnect();
+		}
+
+		// CLEANUP: remover listeners específicos
+		return () => {
+			console.log("🧹 Cleanup MessagesList socket para ticket:", ticketId);
+			if (socketRef.current) {
+				socketRef.current.off("connect", handleConnect);
+				socketRef.current.off("appMessage", handleAppMessage);
+				socketRef.current.off("connect_error", handleConnectError);
+				socketRef.current.off("disconnect", handleDisconnect);
+			}
+			socketRef.current = null;
+		};
+	}, [ticketId]); // DEPENDÊNCIA: apenas ticketId
 
 	const loadMore = useCallback(() => {
 		if (isContextMode) {
@@ -441,14 +541,14 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 		}
 	}, [hasMore, loading, loadMore]);
 
-	const handleOpenMessageOptionsMenu = (e, message) => {
+	const handleOpenMessageOptionsMenu = useCallback((e, message) => {
 		setAnchorEl(e.currentTarget);
 		setSelectedMessage(message);
-	};
+	}, []);
 
-	const handleCloseMessageOptionsMenu = () => {
+	const handleCloseMessageOptionsMenu = useCallback(() => {
 		setAnchorEl(null);
-	};
+	}, []);
 
 	const checkMessageMedia = useCallback((message) => {
 		if (message.mediaType === "location" && message.body.split('|').length >= 2) {
@@ -512,6 +612,12 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 	}, [classes.messageMedia, classes.downloadMedia]);
 
 	const renderMessageAck = useCallback((message) => {
+		// NÃO mostrar ACK para mensagens recebidas (fromMe = false)
+		if (!message.fromMe) {
+			return null;
+		}
+
+		// Para mensagens enviadas (fromMe = true), mostrar o ACK apropriado
 		if (message.ack === 0) {
 			return <AccessTime fontSize="small" className={classes.ackIcons} />;
 		}
@@ -524,6 +630,8 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 		if (message.ack === 3 || message.ack === 4) {
 			return <DoneAll fontSize="small" className={classes.ackDoneAllIcon} />;
 		}
+		
+		// Se não tem ACK definido (undefined/null), não mostrar nada
 		return null;
 	}, [classes.ackIcons, classes.ackDoneAllIcon]);
 
@@ -601,6 +709,12 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 		if (messagesList.length > 0) {
 			return messagesList.map((message, index) => {
 				const isFromMe = message.fromMe;
+				
+				// Limpar o "0" das mensagens recebidas
+				const messageBody = message.body?.startsWith("0") && !isFromMe 
+					? message.body.substring(1) 
+					: message.body;
+
 				return (
 					<React.Fragment key={message.id}>
 						{renderDailyTimestamps(message, index)}
@@ -613,7 +727,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 								variant="contained"
 								size="small"
 								id="messageActionsButton"
-								disabled={message.isDeleted}
+								disabled={Boolean(message.isDeleted)}
 								className={classes.messageActionsButton}
 								onClick={(e) => handleOpenMessageOptionsMenu(e, message)}
 							>
@@ -628,7 +742,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 							<div className={clsx(classes.textContentItem, { [classes.textContentItemDeleted]: message.isDeleted })}>
 								{message.isDeleted && <Block color="disabled" fontSize="small" className={classes.deletedIcon} />}
 								{renderQuotedMessage(message)}
-								<MarkdownWrapper>{message.body}</MarkdownWrapper>
+								<MarkdownWrapper>{messageBody}</MarkdownWrapper>
 								<span className={classes.timestamp}>
 									{format(parseISO(message.createdAt), "HH:mm")}
 									{renderMessageAck(message)}

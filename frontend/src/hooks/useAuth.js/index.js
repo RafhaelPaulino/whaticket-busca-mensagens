@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useHistory } from "react-router-dom";
 import openSocket from "../../services/socket-io";
 
@@ -18,23 +18,30 @@ const useAuth = () => {
 	const socketRef = useRef(null);
 	const refreshTokenTimeoutRef = useRef(null);
 
+	const cleanupSocket = useCallback(() => {
+		if (socketRef.current) {
+			socketRef.current.off("user");
+			socketRef.current.disconnect();
+			socketRef.current = null;
+		}
+	}, []);
+
+	const clearRefreshTimeout = useCallback(() => {
+		if (refreshTokenTimeoutRef.current) {
+			clearTimeout(refreshTokenTimeoutRef.current);
+			refreshTokenTimeoutRef.current = null;
+		}
+	}, []);
+
 	useEffect(() => {
 		isMountedRef.current = true;
+		
 		return () => {
 			isMountedRef.current = false;
-			
-			if (socketRef.current) {
-				socketRef.current.off("user");
-				socketRef.current.disconnect();
-				socketRef.current = null;
-			}
-			
-			const timeoutRef = refreshTokenTimeoutRef.current;
-			if (timeoutRef) {
-				clearTimeout(timeoutRef);
-			}
+			cleanupSocket();
+			clearRefreshTimeout();
 		};
-	}, []);
+	}, [cleanupSocket, clearRefreshTimeout]);
 
 	api.interceptors.request.use(
 		config => {
@@ -154,35 +161,34 @@ const useAuth = () => {
 	useEffect(() => {
 		if (!isAuth || !user.id || !isMountedRef.current) return;
 
-		if (socketRef.current) {
-			socketRef.current.off("user");
-			socketRef.current.disconnect();
-		}
+		cleanupSocket();
 
 		const socket = openSocket();
 		socketRef.current = socket;
 
+		if (!socket) return;
+
 		socket.on("connect", () => {
-			console.log("✅ Socket conectado para usuário:", user.name || user.id);
+			console.log("Socket conectado para usuário:", user.name || user.id);
 		});
 
 		socket.on("user", data => {
 			if (data.action === "update" && data.user.id === user.id && isMountedRef.current) {
-				console.log("👤 Dados do usuário atualizados:", data.user.name);
+				console.log("Dados do usuário atualizados:", data.user.name);
 				setUser(data.user);
 			}
 		});
 
 		socket.on("connect_error", (error) => {
-			console.error("❌ Erro na conexão do socket (useAuth):", error.message);
+			console.error("Erro na conexão do socket (useAuth):", error.message);
 		});
 
 		socket.on("disconnect", (reason) => {
-			console.log("🔌 Socket desconectado (useAuth):", reason);
+			console.log("Socket desconectado (useAuth):", reason);
 		});
 
 		socket.on("reconnect", (attemptNumber) => {
-			console.log(`🔄 Socket reconectado na tentativa ${attemptNumber}`);
+			console.log(`Socket reconectado na tentativa ${attemptNumber}`);
 		});
 
 		return () => {
@@ -194,11 +200,10 @@ const useAuth = () => {
 				socket.off("reconnect");
 				socket.disconnect();
 			}
-			socketRef.current = null;
 		};
-	}, [isAuth, user.id]);
+	}, [isAuth, user.id, cleanupSocket]);
 
-	const handleLogin = async userData => {
+	const handleLogin = useCallback(async (userData) => {
 		if (!isMountedRef.current) return;
 		
 		setLoading(true);
@@ -228,9 +233,9 @@ const useAuth = () => {
 				setLoading(false);
 			}
 		}
-	};
+	}, [history]);
 
-	const handleLogout = async () => {
+	const handleLogout = useCallback(async () => {
 		if (!isMountedRef.current) return;
 		
 		setLoading(true);
@@ -246,11 +251,8 @@ const useAuth = () => {
 				localStorage.removeItem("token");
 				api.defaults.headers.Authorization = undefined;
 				
-				if (socketRef.current) {
-					socketRef.current.off("user");
-					socketRef.current.disconnect();
-					socketRef.current = null;
-				}
+				cleanupSocket();
+				clearRefreshTimeout();
 				
 				setLoading(false);
 				
@@ -261,37 +263,14 @@ const useAuth = () => {
 				}, 100);
 			}
 		}
-	};
-
-	const checkAuthStatus = () => {
-		const token = localStorage.getItem("token");
-		return !!(token && isAuth && user.id);
-	};
-
-	const refreshToken = async () => {
-		try {
-			const { data } = await api.post("/auth/refresh_token");
-			
-			if (data && isMountedRef.current) {
-				localStorage.setItem("token", JSON.stringify(data.token));
-				api.defaults.headers.Authorization = `Bearer ${data.token}`;
-				return true;
-			}
-		} catch (error) {
-			console.error("Erro ao renovar token manualmente:", error);
-			return false;
-		}
-		return false;
-	};
+	}, [history, cleanupSocket, clearRefreshTimeout]);
 
 	return { 
 		isAuth, 
 		user, 
 		loading, 
 		handleLogin, 
-		handleLogout,
-		checkAuthStatus,
-		refreshToken
+		handleLogout
 	};
 };
 

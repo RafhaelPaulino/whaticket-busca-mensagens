@@ -5,32 +5,52 @@ let socketInstance = null;
 let connectionAttempts = 0;
 const maxConnectionAttempts = 5;
 const reconnectInterval = 3000;
+let isConnecting = false;
+let lastTokenUsed = null; // NOVO: Para detectar mudanças de token
 
 function connectToSocket() {
-  if (socketInstance && socketInstance.connected) {
-    return socketInstance;
-  }
-
   const token = localStorage.getItem("token");
   
   if (!token) {
     console.warn("Token não encontrado para conexão Socket.IO");
-    return {
-      on: () => {},
-      off: () => {},
-      emit: () => {},
-      disconnect: () => {},
-      connected: false
-    };
+    return createMockSocket();
+  }
+
+  const parsedToken = JSON.parse(token);
+
+  // VERIFICAR: Se já existe uma conexão ativa e válida
+  if (socketInstance && socketInstance.connected && lastTokenUsed === parsedToken) {
+    console.log("🔌 Socket já conectado e válido, retornando instância existente");
+    return socketInstance;
+  }
+
+  // VERIFICAR: Se mudou o token, desconectar socket anterior
+  if (socketInstance && lastTokenUsed !== parsedToken) {
+    console.log("🔄 Token mudou, desconectando socket anterior");
+    cleanupSocket();
+  }
+
+  // EVITAR: Múltiplas conexões simultâneas
+  if (isConnecting) {
+    console.log("🔌 Conexão já em andamento, aguardando...");
+    return socketInstance || createMockSocket();
   }
 
   try {
-    const parsedToken = JSON.parse(token);
+    isConnecting = true;
+    lastTokenUsed = parsedToken;
+    
+    // LIMPAR: Conexão anterior se existir
+    if (socketInstance) {
+      cleanupSocket();
+    }
+    
+    console.log("🔌 Criando nova conexão Socket.IO");
     
     socketInstance = openSocket(getBackendUrl(), {
       transports: ["websocket", "polling"],
       timeout: 20000,
-      forceNew: false,
+      forceNew: false, // CORRIGIDO: Era true, causava múltiplas conexões
       reconnection: true,
       reconnectionDelay: reconnectInterval,
       reconnectionAttempts: maxConnectionAttempts,
@@ -40,83 +60,132 @@ function connectToSocket() {
       },
     });
 
-    socketInstance.on("connect", () => {
-      console.log("✅ Socket.IO conectado:", socketInstance.id);
-      connectionAttempts = 0;
-    });
-
-    socketInstance.on("disconnect", (reason) => {
-      console.log("🔌 Socket.IO desconectado:", reason);
-      
-      if (reason === "io server disconnect") {
-        socketInstance.connect();
-      }
-    });
-
-    socketInstance.on("connect_error", (error) => {
-      connectionAttempts++;
-      console.error(`❌ Erro conexão Socket.IO (tentativa ${connectionAttempts}):`, error.message);
-      
-      if (error.message.includes("401") || error.message.includes("unauthorized")) {
-        console.warn("Token inválido - limpando localStorage");
-        localStorage.removeItem("token");
-        window.location.href = "/login";
-        return;
-      }
-      
-      if (connectionAttempts >= maxConnectionAttempts) {
-        console.error("Limite de tentativas de conexão atingido");
-        socketInstance.disconnect();
-      }
-    });
-
-    socketInstance.on("reconnect", (attemptNumber) => {
-      console.log(`🔄 Socket.IO reconectado na tentativa ${attemptNumber}`);
-      connectionAttempts = 0;
-    });
-
-    socketInstance.on("reconnect_error", (error) => {
-      console.error("❌ Erro na reconexão Socket.IO:", error.message);
-    });
-
-    socketInstance.on("user", (data) => {
-      console.log("👤 Evento user recebido:", data.action);
-    });
-
-    socketInstance.on("ticket", (data) => {
-      console.log("🎫 Evento ticket recebido:", data.action);
-    });
-
-    socketInstance.on("appMessage", (data) => {
-      console.log("💬 Evento message recebido:", data.action);
-    });
-
-    socketInstance.on("distribution", (data) => {
-      console.log("🔄 Evento distribution recebido:", data.action);
-      
-      // Disparar evento customizado para componentes React
-      if (data.action === "update" || data.action === "create") {
-        window.dispatchEvent(new CustomEvent("distributionUpdate", {
-          detail: data.distribution
-        }));
-      }
-    });
+    // EVENTOS: Configurar apenas uma vez
+    setupSocketEvents();
 
     return socketInstance;
     
   } catch (error) {
     console.error("❌ Erro ao conectar Socket.IO:", error);
-    return null;
+    isConnecting = false;
+    return createMockSocket();
   }
 }
 
-export function disconnectSocket() {
+function setupSocketEvents() {
+  if (!socketInstance) return;
+
+  // REMOVER: Todos os listeners antes de adicionar novos
+  socketInstance.removeAllListeners();
+
+  socketInstance.on("connect", () => {
+    console.log("✅ Socket.IO conectado:", socketInstance.id);
+    connectionAttempts = 0;
+    isConnecting = false;
+  });
+
+  socketInstance.on("disconnect", (reason) => {
+    console.log("🔌 Socket.IO desconectado:", reason);
+    isConnecting = false;
+    
+    // RECONECTAR: Apenas se desconectado pelo servidor
+    if (reason === "io server disconnect") {
+      setTimeout(() => {
+        if (socketInstance && !socketInstance.connected) {
+          socketInstance.connect();
+        }
+      }, 1000);
+    }
+  });
+
+  socketInstance.on("connect_error", (error) => {
+    connectionAttempts++;
+    isConnecting = false;
+    console.error(`❌ Erro conexão Socket.IO (tentativa ${connectionAttempts}):`, error.message);
+    
+    // TOKEN: Inválido - redirecionar para login
+    if (error.message.includes("401") || error.message.includes("unauthorized")) {
+      console.warn("Token inválido - limpando localStorage");
+      localStorage.removeItem("token");
+      lastTokenUsed = null;
+      
+      // EVITAR: Redirecionamento em loops
+      if (!window.location.pathname.includes("/login")) {
+        window.location.href = "/login";
+      }
+      return;
+    }
+    
+    // LIMITE: De tentativas atingido
+    if (connectionAttempts >= maxConnectionAttempts) {
+      console.error("Limite de tentativas de conexão atingido");
+      cleanupSocket();
+    }
+  });
+
+  socketInstance.on("reconnect", (attemptNumber) => {
+    console.log(`🔄 Socket.IO reconectado na tentativa ${attemptNumber}`);
+    connectionAttempts = 0;
+    isConnecting = false;
+  });
+
+  socketInstance.on("reconnect_error", (error) => {
+    console.error("❌ Erro na reconexão Socket.IO:", error.message);
+  });
+
+  // EVENTOS: Globais apenas para debug
+  socketInstance.on("user", (data) => {
+    console.log("👤 [Global] Evento user:", data.action);
+  });
+
+  socketInstance.on("ticket", (data) => {
+    console.log("🎫 [Global] Evento ticket:", data.action, data.ticket?.id || data.ticketId);
+  });
+
+  socketInstance.on("appMessage", (data) => {
+    console.log("💬 [Global] Evento appMessage:", data.action, data.message?.id);
+  });
+
+  socketInstance.on("distribution", (data) => {
+    console.log("🔄 [Global] Evento distribution:", data.action);
+    
+    // DISPARAR: Evento customizado para componentes React
+    if (data.action === "update" || data.action === "create") {
+      window.dispatchEvent(new CustomEvent("distributionUpdate", {
+        detail: data.distribution
+      }));
+    }
+  });
+}
+
+function cleanupSocket() {
   if (socketInstance) {
+    console.log("🧹 Limpando socket anterior");
     socketInstance.removeAllListeners();
     socketInstance.disconnect();
     socketInstance = null;
-    console.log("🔌 Socket.IO desconectado manualmente");
   }
+  isConnecting = false;
+}
+
+function createMockSocket() {
+  console.warn("🔌 Criando mock socket - token inválido ou erro");
+  return {
+    on: () => {},
+    off: () => {},
+    emit: () => {},
+    disconnect: () => {},
+    removeAllListeners: () => {},
+    connected: false,
+    id: null
+  };
+}
+
+// EXPORTS: Funções utilitárias
+export function disconnectSocket() {
+  cleanupSocket();
+  lastTokenUsed = null;
+  console.log("🔌 Socket.IO desconectado manualmente");
 }
 
 export function isSocketConnected() {
@@ -124,10 +193,12 @@ export function isSocketConnected() {
 }
 
 export function reconnectSocket() {
-  if (socketInstance) {
-    disconnectSocket();
-  }
+  cleanupSocket();
   return connectToSocket();
+}
+
+export function getSocketInstance() {
+  return socketInstance;
 }
 
 export default connectToSocket;
