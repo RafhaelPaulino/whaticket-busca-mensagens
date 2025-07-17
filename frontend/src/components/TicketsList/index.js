@@ -90,15 +90,14 @@ const reducer = (state, action) => {
 			);
 		}
 
-		// ✅ LÓGICA DE ATUALIZAÇÃO REFINADA
+		
 		case "UPDATE_TICKET": {
 			const updatedTicket = action.payload;
 			const currentListStatus = action.status;
 			
-			// 1. "Limpeza de vestígio": Remove qualquer versão antiga do ticket da lista.
+			
 			const newState = state.filter(t => t.id !== updatedTicket.id);
 
-			// 2. Se o ticket atualizado pertence a esta lista, adiciona no topo.
 			if (updatedTicket.status === currentListStatus) {
 				newState.unshift(updatedTicket);
 				console.log(`[REDUCER] Ticket ${updatedTicket.id} adicionado/atualizado na lista '${currentListStatus}'.`);
@@ -140,7 +139,6 @@ const TicketsList = (props) => {
 	const { user } = useContext(AuthContext);
 	const isMountedRef = useRef(true);
 
-	// ✅ Estabiliza a dependência do array de filas para o useEffect
 	const queueIds = JSON.stringify(selectedQueueIds);
 
 	useEffect(() => {
@@ -151,14 +149,14 @@ const TicketsList = (props) => {
 	useEffect(() => {
 		dispatch({ type: "RESET" });
 		setPageNumber(1);
-	}, [status, searchParam, showAll, queueIds]); // Usa a dependência estável
+	}, [status, searchParam, showAll, queueIds]); 
 
 	const { tickets, hasMore, loading } = useTickets({
 		pageNumber,
 		searchParam,
 		status,
 		showAll,
-		queueIds: queueIds, // Usa a dependência estável
+		queueIds: queueIds, 
 	});
 
 	useEffect(() => {
@@ -226,9 +224,7 @@ const TicketsList = (props) => {
 			socket.off("contact", handleContact);
 			socket.off("connect", handleConnect);
 		};
-	// ✅ CORREÇÃO DEFINITIVA: As dependências agora são estáveis.
-	// `user.id` em vez do objeto `user`, e `queueIds` (string) em vez do array `selectedQueueIds`.
-	// Isso impede que o useEffect seja executado desnecessariamente, estabilizando a conexão do socket.
+	
 	}, [status, user?.id, showAll, queueIds, searchParam]);
 
 	const loadMore = () => {

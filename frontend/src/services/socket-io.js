@@ -6,7 +6,7 @@ let connectionAttempts = 0;
 const maxConnectionAttempts = 5;
 const reconnectInterval = 3000;
 let isConnecting = false;
-let lastTokenUsed = null; // NOVO: Para detectar mudanças de token
+let lastTokenUsed = null; 
 
 function connectToSocket() {
   const token = localStorage.getItem("token");
@@ -18,19 +18,19 @@ function connectToSocket() {
 
   const parsedToken = JSON.parse(token);
 
-  // VERIFICAR: Se já existe uma conexão ativa e válida
+  
   if (socketInstance && socketInstance.connected && lastTokenUsed === parsedToken) {
     console.log("🔌 Socket já conectado e válido, retornando instância existente");
     return socketInstance;
   }
 
-  // VERIFICAR: Se mudou o token, desconectar socket anterior
+  
   if (socketInstance && lastTokenUsed !== parsedToken) {
     console.log("🔄 Token mudou, desconectando socket anterior");
     cleanupSocket();
   }
 
-  // EVITAR: Múltiplas conexões simultâneas
+  
   if (isConnecting) {
     console.log("🔌 Conexão já em andamento, aguardando...");
     return socketInstance || createMockSocket();
@@ -40,7 +40,6 @@ function connectToSocket() {
     isConnecting = true;
     lastTokenUsed = parsedToken;
     
-    // LIMPAR: Conexão anterior se existir
     if (socketInstance) {
       cleanupSocket();
     }
@@ -50,7 +49,7 @@ function connectToSocket() {
     socketInstance = openSocket(getBackendUrl(), {
       transports: ["websocket", "polling"],
       timeout: 20000,
-      forceNew: false, // CORRIGIDO: Era true, causava múltiplas conexões
+      forceNew: false, 
       reconnection: true,
       reconnectionDelay: reconnectInterval,
       reconnectionAttempts: maxConnectionAttempts,
@@ -60,7 +59,6 @@ function connectToSocket() {
       },
     });
 
-    // EVENTOS: Configurar apenas uma vez
     setupSocketEvents();
 
     return socketInstance;
@@ -75,7 +73,6 @@ function connectToSocket() {
 function setupSocketEvents() {
   if (!socketInstance) return;
 
-  // REMOVER: Todos os listeners antes de adicionar novos
   socketInstance.removeAllListeners();
 
   socketInstance.on("connect", () => {
@@ -88,7 +85,6 @@ function setupSocketEvents() {
     console.log("🔌 Socket.IO desconectado:", reason);
     isConnecting = false;
     
-    // RECONECTAR: Apenas se desconectado pelo servidor
     if (reason === "io server disconnect") {
       setTimeout(() => {
         if (socketInstance && !socketInstance.connected) {
@@ -103,20 +99,20 @@ function setupSocketEvents() {
     isConnecting = false;
     console.error(`❌ Erro conexão Socket.IO (tentativa ${connectionAttempts}):`, error.message);
     
-    // TOKEN: Inválido - redirecionar para login
+
     if (error.message.includes("401") || error.message.includes("unauthorized")) {
       console.warn("Token inválido - limpando localStorage");
       localStorage.removeItem("token");
       lastTokenUsed = null;
       
-      // EVITAR: Redirecionamento em loops
+
       if (!window.location.pathname.includes("/login")) {
         window.location.href = "/login";
       }
       return;
     }
     
-    // LIMITE: De tentativas atingido
+    
     if (connectionAttempts >= maxConnectionAttempts) {
       console.error("Limite de tentativas de conexão atingido");
       cleanupSocket();
@@ -133,7 +129,7 @@ function setupSocketEvents() {
     console.error("❌ Erro na reconexão Socket.IO:", error.message);
   });
 
-  // EVENTOS: Globais apenas para debug
+
   socketInstance.on("user", (data) => {
     console.log("👤 [Global] Evento user:", data.action);
   });
@@ -149,7 +145,7 @@ function setupSocketEvents() {
   socketInstance.on("distribution", (data) => {
     console.log("🔄 [Global] Evento distribution:", data.action);
     
-    // DISPARAR: Evento customizado para componentes React
+    
     if (data.action === "update" || data.action === "create") {
       window.dispatchEvent(new CustomEvent("distributionUpdate", {
         detail: data.distribution
@@ -181,7 +177,6 @@ function createMockSocket() {
   };
 }
 
-// EXPORTS: Funções utilitárias
 export function disconnectSocket() {
   cleanupSocket();
   lastTokenUsed = null;

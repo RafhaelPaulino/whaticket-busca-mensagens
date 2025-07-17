@@ -19,7 +19,6 @@ import { Can } from "../Can";
 import TicketsQueueSelect from "../TicketsQueueSelect";
 import { Button } from "@material-ui/core";
 
-// 1. Importe o useContext e o nosso TicketsContext
 import TicketsContext from "../../context/TicketsContext";
 
 const useStyles = makeStyles((theme) => ({
@@ -94,7 +93,7 @@ const TicketsManager = () => {
     const userQueueIds = user.queues.map((q) => q.id);
     const [selectedQueueIds, setSelectedQueueIds] = useState(userQueueIds || []);
 
-    // 2. Pegue a 'key' do contexto
+   
     const { key } = useContext(TicketsContext);
 
     useEffect(() => {
@@ -143,7 +142,7 @@ const TicketsManager = () => {
     };
 
     return (
-        // ✅ A 'key' foi REMOVIDA daqui para não recarregar o painel inteiro
+       
         <Paper elevation={0} variant="outlined" className={classes.ticketsWrapper}>
             <NewTicketModal
                 modalOpen={newTicketModalOpen}

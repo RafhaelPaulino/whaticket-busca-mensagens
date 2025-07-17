@@ -5,7 +5,6 @@ import "react-toastify/dist/ReactToastify.css";
 import { createTheme, ThemeProvider } from "@material-ui/core/styles";
 import { ptBR } from "@material-ui/core/locale";
 
-// 1. Importe o TicketsContextProvider
 import { TicketsContextProvider } from "./context/TicketsContext";
 
 class ErrorBoundary extends React.Component {

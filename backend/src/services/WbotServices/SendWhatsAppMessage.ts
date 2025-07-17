@@ -1,12 +1,12 @@
 import { getWbot } from "../../libs/wbot";
 import { logger } from "../../utils/logger";
 import AppError from "../../errors/AppError";
-import Message from "../../models/Message"; // Para buscar a mensagem citada, se houver
-import { jidEncode } from '@whiskeysockets/baileys'; // Importar jidEncode para formatar o JID
+import Message from "../../models/Message"; 
+import { jidEncode } from '@whiskeysockets/baileys'; 
 
 interface Request {
   whatsappId: number;
-  contactId: string; // Número do contato (ex: 5511999999999)
+  contactId: string; 
   body: string;
   quotedMsgId?: string;
 }
@@ -19,8 +19,7 @@ const SendWhatsAppMessage = async ({
 }: Request): Promise<void> => {
   try {
     const wbot = getWbot(whatsappId);
-    // Formatar o JID corretamente para o Baileys
-    // O contactId que vem do frontend é apenas o número. Precisamos adicionar o domínio.
+   
     const jid = jidEncode(contactId, 's.whatsapp.net'); 
     logger.info(`[SendWhatsAppMessage] Tentando enviar mensagem para JID: ${jid} via WhatsApp ID: ${whatsappId}`);
 
@@ -30,7 +29,7 @@ const SendWhatsAppMessage = async ({
     if (quotedMsgId) {
       quotedMessage = await Message.findByPk(quotedMsgId);
       if (quotedMessage) {
-        // Adaptar o objeto de mensagem citada para o formato do Baileys
+       
         baileysQuotedMessage = {
           key: {
             remoteJid: jidEncode(quotedMessage.ticket?.contact?.number || '', 's.whatsapp.net'),
@@ -55,7 +54,7 @@ const SendWhatsAppMessage = async ({
       messageOptions.quoted = baileysQuotedMessage;
     }
 
-    // Envia a mensagem de texto usando a API do Baileys
+   
     await wbot.sendMessage(jid, messageOptions);
 
     logger.info(`[SendWhatsAppMessage] Mensagem de texto enviada com sucesso para ${contactId} via WhatsApp ${whatsappId}.`);

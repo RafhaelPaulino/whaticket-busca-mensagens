@@ -13,7 +13,6 @@ import toastError from "../../errors/toastError";
 import { AuthContext } from "../../context/Auth/AuthContext";
 import MessageSearchModal from "../MessageSearchModal";
 
-// 1. Importe o useContext e o nosso TicketsContext
 import TicketsContext from "../../context/TicketsContext";
 
 const useStyles = makeStyles(theme => ({
@@ -69,7 +68,7 @@ const TicketActionButtons = ({ ticket, onNavigateToMessage }) => {
     const ticketOptionsMenuOpen = Boolean(anchorEl);
     const { user } = useContext(AuthContext);
 
-    // 2. Pegue a função refreshTickets do contexto
+    
     const { refreshTickets } = useContext(TicketsContext);
 
     const handleOpenTicketOptionsMenu = e => {
@@ -98,7 +97,7 @@ const TicketActionButtons = ({ ticket, onNavigateToMessage }) => {
 
             setLoading(false);
             
-            // 3. Após a API responder com sucesso, chame o refresh
+            
             refreshTickets();
 
             if (status === "open") {

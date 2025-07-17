@@ -9,7 +9,7 @@ interface QueueData {
 }
 
 const CreateQueueService = async (queueData: QueueData): Promise<Queue> => {
-  const { color, name } = queueData;
+  const { color, name, greetingMessage } = queueData;
 
   const queueSchema = Yup.object().shape({
     name: Yup.string()
@@ -50,7 +50,7 @@ const CreateQueueService = async (queueData: QueueData): Promise<Queue> => {
           }
           return false;
         }
-      )
+      ),
   });
 
   try {
@@ -59,7 +59,11 @@ const CreateQueueService = async (queueData: QueueData): Promise<Queue> => {
     throw new AppError(err.message);
   }
 
-  const queue = await Queue.create(queueData);
+  const queue = await Queue.create({
+    name,
+    color,
+    greetingMessage
+  });
 
   return queue;
 };

@@ -37,9 +37,9 @@ export const lazyIndex = async (req: Request, res: Response): Promise<Response> 
   try {
     logger.info(`📱 Lazy loading messages for ticket ${ticketId}, direction: ${direction}`);
     
-    // Usando ListMessagesService como fallback, se LazyListMessagesService não existir
+    
     const result = await ListMessagesService({
-      pageNumber: 1, // Adaptação, pois ListMessagesService usa pageNumber
+      pageNumber: 1, 
       ticketId: parseInt(ticketId, 10)
     });
 
@@ -61,7 +61,7 @@ export const lazyIndex = async (req: Request, res: Response): Promise<Response> 
         before: result.messages.length > 0 ? result.messages[0].id : null,
         after: result.messages.length > 0 ? result.messages[result.messages.length - 1].id : null,
       },
-      direction: direction // Usar o direction da query
+      direction: direction 
     });
     
   } catch (error: any) {
@@ -102,11 +102,11 @@ export const lazySearch = async (req: Request, res: Response): Promise<Response>
   try {
     logger.info(`🔍 Lazy search in ticket ${ticketId}: "${searchTerm}" (page ${page})`);
     
-    // Substituir por LazySearchService se existir
+   
     const result = await ListMessagesService({
       ticketId: parseInt(ticketId, 10),
       pageNumber: parseInt(page, 10),
-      // Adicionar lógica de filtro por termo de busca, datas, fromMe, mediaType se ListMessagesService suportar
+      
     });
 
     logger.info(`✅ Lazy search completed: ${result.messages.length} results found`);
@@ -133,7 +133,7 @@ export const getMessageContext = async (req: Request, res: Response): Promise<Re
   try {
     logger.info(`🎯 Getting context for message ${messageId} in ticket ${ticketId}`);
     
-    // Substituir por MessageContextService se existir
+    
     const result = await ListMessagesService({
       ticketId: parseInt(ticketId, 10),
       pageNumber: 1,
@@ -198,7 +198,7 @@ export const getTicketInfo = async (req: Request, res: Response): Promise<Respon
   }
 };
 
-// CORREÇÃO: Função store combinada e aprimorada
+
 export const store = async (req: Request, res: Response): Promise<Response> => {
   const { ticketId } = req.params;
   const { body, quotedMsg }: MessageData = req.body;
@@ -206,25 +206,25 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
   
   try {
     const ticket = await ShowTicketService(ticketId);
-    await SetTicketMessagesAsRead(ticket); // Marcar mensagens como lidas ao enviar uma resposta
+    await SetTicketMessagesAsRead(ticket); 
     
     if (medias && medias.length > 0) {
       logger.info(`[MessageController] Enviando m├¡dia(s) para ticket ${ticket.id}. Quantidade: ${medias.length}`);
       await Promise.all(medias.map(async (media: Express.Multer.File) => {
         await SendWhatsAppMedia({ 
           whatsappId: ticket.whatsappId,
-          contactId: ticket.contact.number, // Passa apenas o n├║mero
+          contactId: ticket.contact.number, 
           media: {
             data: media.buffer,
             mimetype: media.mimetype,
             filename: media.originalname
           },
-          caption: body // Legenda para a m├¡dia
+          caption: body 
         });
 
-        // Criar entrada da mensagem de m├¡dia no DB ap├│s o envio
+     
         const messageData = {
-          id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`, // ID mais robusto
+          id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`, 
           ticketId: ticket.id,
           contactId: ticket.contact.id,
           body: body || media.originalname,
@@ -233,7 +233,7 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
           mediaType: media.mimetype.split("/")[0],
           quotedMsgId: quotedMsg ? quotedMsg.id : undefined,
           read: true,
-          ack: 0 // Pendente
+          ack: 0 
         };
         const newMessage = await CreateMessageService({ messageData });
         const io = getIO();
@@ -245,21 +245,21 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
       logger.info(`[MessageController] Enviando mensagem de texto para ticket ${ticket.id}. Corpo: ${body}`);
       await SendWhatsAppMessage({ 
         whatsappId: ticket.whatsappId,
-        contactId: ticket.contact.number, // Passa apenas o n├║mero
+        contactId: ticket.contact.number, 
         body: body,
         quotedMsgId: quotedMsg ? quotedMsg.id : undefined 
       });
 
-      // Criar entrada da mensagem de texto no DB ap├│s o envio
+     
       const messageData = {
-        id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`, // ID mais robusto
+        id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`, 
         ticketId: ticket.id,
         contactId: ticket.contact.id,
         body: body,
         fromMe: true,
         quotedMsgId: quotedMsg ? quotedMsg.id : undefined,
         read: true,
-        ack: 0 // Pendente
+        ack: 0 
       };
       const newMessage = await CreateMessageService({ messageData });
       const io = getIO();
@@ -268,7 +268,7 @@ export const store = async (req: Request, res: Response): Promise<Response> => {
       logger.info(`[MessageController] Mensagem de texto ${newMessage.id} criada no DB e emitida para frontend.`);
     }
     
-    return res.json({ id: ticket.id }); // Retorna o ID do ticket
+    return res.json({ id: ticket.id }); 
   } catch (error: any) {
     logger.error(`[MessageController] Erro ao enviar mensagem: ${error.message || error}`);
     throw new AppError("ERR_SENDING_WAPP_MSG");
@@ -293,7 +293,6 @@ export const remove = async (req: Request, res: Response): Promise<Response> => 
   }
 };
 
-// Funções index e searchMessages (depreciadas, redirecionam para lazy)
 export const index = async (req: Request, res: Response): Promise<Response> => {
   logger.warn("⚠️ Using deprecated endpoint. Please migrate to /lazy");
   req.query.direction = 'initial';

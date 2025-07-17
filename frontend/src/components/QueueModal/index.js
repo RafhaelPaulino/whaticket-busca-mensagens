@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-
 import * as Yup from "yup";
 import { Formik, Form, Field } from "formik";
 import { toast } from "react-toastify";
@@ -13,15 +12,13 @@ import DialogActions from "@material-ui/core/DialogActions";
 import DialogContent from "@material-ui/core/DialogContent";
 import DialogTitle from "@material-ui/core/DialogTitle";
 import CircularProgress from "@material-ui/core/CircularProgress";
+import { FormControlLabel, IconButton, InputAdornment, Switch, Typography } from "@material-ui/core";
+import { Colorize } from "@material-ui/icons";
 
 import { i18n } from "../../translate/i18n";
-
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
 import ColorPicker from "../ColorPicker";
-import { IconButton, InputAdornment } from "@material-ui/core";
-import { Colorize } from "@material-ui/icons";
-import DistributionToggle from "../DistributionToggle";
 
 const useStyles = makeStyles(theme => ({
 	root: {
@@ -32,11 +29,9 @@ const useStyles = makeStyles(theme => ({
 		marginRight: theme.spacing(1),
 		flex: 1,
 	},
-
 	btnWrapper: {
 		position: "relative",
 	},
-
 	buttonProgress: {
 		color: green[500],
 		position: "absolute",
@@ -52,6 +47,13 @@ const useStyles = makeStyles(theme => ({
 	colorAdorment: {
 		width: 20,
 		height: 20,
+	},
+
+	distributionWrapper: {
+		marginTop: theme.spacing(2),
+		padding: theme.spacing(2),
+		border: `1px solid ${theme.palette.divider}`,
+		borderRadius: theme.shape.borderRadius,
 	},
 }));
 
@@ -75,6 +77,8 @@ const QueueModal = ({ open, onClose, queueId }) => {
 
 	const [colorPickerModalOpen, setColorPickerModalOpen] = useState(false);
 	const [queue, setQueue] = useState(initialState);
+
+	const [autoDistribution, setAutoDistribution] = useState(false);
 	const greetingRef = useRef();
 
 	useEffect(() => {
@@ -85,6 +89,8 @@ const QueueModal = ({ open, onClose, queueId }) => {
 				setQueue(prevState => {
 					return { ...prevState, ...data };
 				});
+				
+				setAutoDistribution(data.autoDistribution || false);
 			} catch (err) {
 				toastError(err);
 			}
@@ -96,6 +102,8 @@ const QueueModal = ({ open, onClose, queueId }) => {
 				color: "",
 				greetingMessage: "",
 			});
+			
+			setAutoDistribution(false);
 		};
 	}, [queueId, open]);
 
@@ -106,15 +114,26 @@ const QueueModal = ({ open, onClose, queueId }) => {
 
 	const handleSaveQueue = async values => {
 		try {
+			
+			const payload = {
+				...values,
+				autoDistribution: autoDistribution,
+			};
+
 			if (queueId) {
-				await api.put(`/queue/${queueId}`, values);
+				await api.put(`/queue/${queueId}`, payload);
 			} else {
-				await api.post("/queue", values);
+				await api.post("/queue", payload);
 			}
 			toast.success("Queue saved successfully");
 			handleClose();
 		} catch (err) {
-			toastError(err);
+		
+			if (err.response?.data?.error === "ERR_NO_USERS_IN_QUEUE") {
+				toast.error("Não é possível ativar. Adicione usuários a esta fila primeiro.");
+			} else {
+				toastError(err);
+			}
 		}
 	};
 
@@ -214,17 +233,27 @@ const QueueModal = ({ open, onClose, queueId }) => {
 										margin="dense"
 									/>
 								</div>
-
-								{queueId && (
-									<div style={{ marginTop: 16, padding: 16, border: '1px solid #e0e0e0', borderRadius: 4 }}>
-										<DistributionToggle 
-											queueId={queueId}
-											onUpdate={() => {
-												// Opcional: atualizar algo se necessário
-											}}
-										/>
-									</div>
-								)}
+								{/* ✅ NOVO TRECHO: Seção para o toggle de distribuição automática */}
+								<div className={classes.distributionWrapper}>
+									<Typography variant="subtitle1" gutterBottom>
+										Distribuição Automática
+									</Typography>
+									<FormControlLabel
+										control={
+											<Switch
+												checked={autoDistribution}
+												onChange={(e) => setAutoDistribution(e.target.checked)}
+												name="autoDistribution"
+												color="primary"
+												disabled={isSubmitting}
+											/>
+										}
+										label={autoDistribution ? "Ativada" : "Desativada"}
+									/>
+									<Typography variant="caption" display="block">
+										Quando ativada, os tickets desta fila serão atribuídos automaticamente a um usuário online.
+									</Typography>
+								</div>
 							</DialogContent>
 							<DialogActions>
 								<Button

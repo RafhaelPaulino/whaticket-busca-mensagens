@@ -1,5 +1,5 @@
 import Whatsapp from "../../models/Whatsapp";
-import StartWhatsAppSession from "./StartWhatsAppSession"; // Correção: Importação como default
+import StartWhatsAppSession from "./StartWhatsAppSession"; 
 
 const StartAllWhatsAppsSessions = async (): Promise<void> => {
   const whatsapps = await Whatsapp.findAll();

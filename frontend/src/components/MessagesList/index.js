@@ -323,7 +323,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 	const isMountedRef = useRef(true);
 	const socketRef = useRef(null);
 
-	// Função de fetch com controle de duplicação
+
 	const fetchMessages = useCallback(async (page) => {
 		if (isContextMode || loading || !ticketId) return;
 		
@@ -372,7 +372,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 		}
 	}, [ticketId, fetchMessages]);
 
-	// EFEITO PRINCIPAL - só executa quando ticketId ou messageToScrollToId mudam
+	
 	useEffect(() => {
 		if (!ticketId) return;
 
@@ -382,7 +382,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 		setPageNumber(1);
 		setIsContextMode(false);
 
-		// Delay para evitar múltiplas chamadas
+	
 		const timeout = setTimeout(() => {
 			if (messageToScrollToId) {
 				fetchMessageContext(messageToScrollToId);
@@ -428,7 +428,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 		};
 	}, []);
 
-	// Socket.IO - corrigido para evitar listeners duplicados
+
 	useEffect(() => {
 		if (!ticketId) return;
 
@@ -446,7 +446,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 			if (!isMountedRef.current) return;
 			console.log("🔌 Socket conectado - MessagesList para ticket:", ticketId);
 			
-			// EMITIR: joinChatBox com delay para garantir processamento
+		
 			setTimeout(() => {
 				if (isMountedRef.current && socketRef.current && socketRef.current.connected) {
 					console.log("📨 Emitindo joinChatBox para ticket:", ticketId);
@@ -460,7 +460,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 			
 			console.log("📨 Evento appMessage recebido:", data.action, data.message?.id, "ACK:", data.message?.ack);
 			
-			// FILTRAR: apenas mensagens do ticket atual
+			
 			if (data.ticket?.id && data.ticket.id !== parseInt(ticketId)) {
 				console.log("📨 Mensagem não é para o ticket atual, ignorando");
 				return;
@@ -470,7 +470,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 				console.log("📨 ✅ ADICIONANDO nova mensagem:", data.message.body?.substring(0, 50));
 				dispatch({ type: "ADD_MESSAGE", payload: data.message });
 				
-				// SCROLL: automático para nova mensagem
+				
 				setTimeout(() => {
 					if (isMountedRef.current && lastMessageRef.current) {
 						console.log("📨 Fazendo scroll para a nova mensagem");
@@ -495,7 +495,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 			console.log("🔌 Socket desconectado MessagesList:", reason);
 		};
 
-		// CONFIGURAR: listeners apenas uma vez
+		
 		socket.on("connect", handleConnect);
 		socket.on("appMessage", handleAppMessage);
 		socket.on("connect_error", handleConnectError);
@@ -503,13 +503,13 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 
 		console.log("✅ Listeners configurados - MessagesList para ticket:", ticketId);
 
-		// CONECTAR: imediatamente se socket já estiver ativo
+		
 		if (socket.connected) {
 			console.log("🔌 Socket já conectado, configurando imediatamente");
 			handleConnect();
 		}
 
-		// CLEANUP: remover listeners específicos
+
 		return () => {
 			console.log("🧹 Cleanup MessagesList socket para ticket:", ticketId);
 			if (socketRef.current) {
@@ -520,7 +520,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 			}
 			socketRef.current = null;
 		};
-	}, [ticketId]); // DEPENDÊNCIA: apenas ticketId
+	}, [ticketId]); 
 
 	const loadMore = useCallback(() => {
 		if (isContextMode) {
@@ -612,12 +612,11 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 	}, [classes.messageMedia, classes.downloadMedia]);
 
 	const renderMessageAck = useCallback((message) => {
-		// NÃO mostrar ACK para mensagens recebidas (fromMe = false)
+
 		if (!message.fromMe) {
 			return null;
 		}
 
-		// Para mensagens enviadas (fromMe = true), mostrar o ACK apropriado
 		if (message.ack === 0) {
 			return <AccessTime fontSize="small" className={classes.ackIcons} />;
 		}
@@ -631,7 +630,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 			return <DoneAll fontSize="small" className={classes.ackDoneAllIcon} />;
 		}
 		
-		// Se não tem ACK definido (undefined/null), não mostrar nada
+		
 		return null;
 	}, [classes.ackIcons, classes.ackDoneAllIcon]);
 
@@ -710,7 +709,7 @@ const MessagesList = ({ ticketId, isGroup, messageToScrollToId }) => {
 			return messagesList.map((message, index) => {
 				const isFromMe = message.fromMe;
 				
-				// Limpar o "0" das mensagens recebidas
+
 				const messageBody = message.body?.startsWith("0") && !isFromMe 
 					? message.body.substring(1) 
 					: message.body;

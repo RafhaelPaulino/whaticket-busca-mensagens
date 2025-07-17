@@ -1,11 +1,11 @@
 import { getWbot } from "../../libs/wbot";
-import { WAMessageContent } from '@whiskeysockets/baileys'; // Importa tipos do Baileys
+import { WAMessageContent } from '@whiskeysockets/baileys'; 
 import { logger } from "../../utils/logger";
 import AppError from "../../errors/AppError";
 
 interface Request {
   whatsappId: number;
-  contactId: string; // JID do contato no formato Baileys (ex: 5511999999999@s.whatsapp.net)
+  contactId: string; 
   media: {
     data: Buffer;
     mimetype: string;
@@ -23,7 +23,7 @@ const SendWhatsAppMedia = async ({
   try {
     const wbot = getWbot(whatsappId);
 
-    // Adapta o tipo de conteúdo da mensagem para o Baileys
+   
     const messageContent: WAMessageContent = {
       [media.mimetype.includes('image') ? 'image' : media.mimetype.includes('video') ? 'video' : 'document']: media.data,
       mimetype: media.mimetype,
@@ -31,7 +31,7 @@ const SendWhatsAppMedia = async ({
       caption: caption || ''
     };
 
-    // Envia a mensagem de mídia usando a API do Baileys
+    
     await wbot.sendMessage(contactId + '@s.whatsapp.net', messageContent);
 
     logger.info(`[SendWhatsAppMedia] Mídia enviada com sucesso para ${contactId} via WhatsApp ${whatsappId}.`);

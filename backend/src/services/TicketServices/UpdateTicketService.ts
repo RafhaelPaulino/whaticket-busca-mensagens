@@ -47,8 +47,6 @@ const UpdateTicketService = async ({
     await CheckContactOpenTickets(ticket.contact.id, ticket.whatsappId);
   }
 
-  // ✅ LÓGICA DE RESET DA FILA QUANDO TICKET É FECHADO
-  // Se o status está sendo alterado para "closed", resetamos a fila para null
   let finalQueueId = queueId;
   if (status === "closed") {
     logger.info(`[UpdateTicketService] Ticket ${ticketId} sendo FECHADO. Resetando fila para null para futuras reaberturas.`);
