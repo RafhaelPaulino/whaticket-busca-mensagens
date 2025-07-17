@@ -4,15 +4,19 @@ import { writeFile } from "fs";
 import * as Sentry from "@sentry/node";
 
 import {
-  Contact as WbotContact,
-  Message as WbotMessage,
-  MessageAck,
-  Client
-} from "whatsapp-web.js";
+    WAMessage,
+    WASocket,
+    proto,
+    extractMessageContent,
+    getContentType,
+    downloadContentFromMessage
+} from '@whiskeysockets/baileys';
 
 import Contact from "../../models/Contact";
 import Ticket from "../../models/Ticket";
 import Message from "../../models/Message";
+import Queue from "../../models/Queue";
+import Distribution from "../../models/Distribution";
 
 import { getIO } from "../../libs/socket";
 import CreateMessageService from "../MessageServices/CreateMessageService";
@@ -23,441 +27,476 @@ import ShowWhatsAppService from "../WhatsappService/ShowWhatsAppService";
 import { debounce } from "../../helpers/Debounce";
 import UpdateTicketService from "../TicketServices/UpdateTicketService";
 import CreateContactService from "../ContactServices/CreateContactService";
-import GetContactService from "../ContactServices/GetContactService";
 import formatBody from "../../helpers/Mustache";
+import GetNextUserService from "../DistributionService/GetNextUserService";
 
-interface Session extends Client {
-  id?: number;
-}
+const processedMessageIds = new Set<string>();
 
 const writeFileAsync = promisify(writeFile);
 
-const verifyContact = async (msgContact: WbotContact): Promise<Contact> => {
-  const profilePicUrl = await msgContact.getProfilePicUrl();
+const getNumberFromJid = (jid: string) => {
+    return jid.replace(/\D/g, "");
+};
 
-  const contactData = {
-    name: msgContact.name || msgContact.pushname || msgContact.id.user,
-    number: msgContact.id.user,
-    profilePicUrl,
-    isGroup: msgContact.isGroup
-  };
+const verifyContact = async (msg: WAMessage, wbot: WASocket): Promise<Contact> => {
+    const contactJid = msg.key.fromMe ? msg.key.remoteJid! : msg.key.participant || msg.key.remoteJid!;
+    const number = getNumberFromJid(contactJid);
 
-  const contact = CreateOrUpdateContactService(contactData);
+    let contactName = msg.pushName || number;
+    let profilePicUrl = '';
 
-  return contact;
+    try {
+        profilePicUrl = await wbot.profilePictureUrl(contactJid).catch(() => '');
+    } catch (err) {
+        // Silent error
+    }
+
+    const contactData = {
+        name: contactName,
+        number: number,
+        profilePicUrl: profilePicUrl,
+        isGroup: contactJid.endsWith('@g.us')
+    };
+
+    const contact = await CreateOrUpdateContactService(contactData);
+    return contact;
 };
 
 const verifyQuotedMessage = async (
-  msg: WbotMessage
+    msg: WAMessage
 ): Promise<Message | null> => {
-  if (!msg.hasQuotedMsg) return null;
+    const quotedMsgContent = extractMessageContent(msg.message?.extendedTextMessage?.contextInfo?.quotedMessage);
 
-  const wbotQuotedMsg = await msg.getQuotedMessage();
+    if (!quotedMsgContent) {
+        return null;
+    }
 
-  const quotedMsg = await Message.findOne({
-    where: { id: wbotQuotedMsg.id.id }
-  });
+    const quotedMsgId = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
+    const message = await Message.findOne({
+        where: { id: quotedMsgId }
+    });
 
-  if (!quotedMsg) return null;
-
-  return quotedMsg;
+    if (!message) {
+        return null;
+    }
+    return message;
 };
 
-
-// generate random id string for file names, function got from: https://stackoverflow.com/a/1349426/1851801
 function makeRandomId(length: number) {
     let result = '';
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     const charactersLength = characters.length;
     let counter = 0;
     while (counter < length) {
-      result += characters.charAt(Math.floor(Math.random() * charactersLength));
-      counter += 1;
+        result += characters.charAt(Math.floor(Math.random() * charactersLength));
+        counter += 1;
     }
     return result;
 }
 
 const verifyMediaMessage = async (
-  msg: WbotMessage,
-  ticket: Ticket,
-  contact: Contact
+    msg: WAMessage,
+    ticket: Ticket,
+    contact: Contact
 ): Promise<Message> => {
-  const quotedMsg = await verifyQuotedMessage(msg);
+    const quotedMsg = await verifyQuotedMessage(msg);
+    const messageContent = extractMessageContent(msg.message);
+    const contentType = getContentType(messageContent);
 
-  const media = await msg.downloadMedia();
+    let mediaData: Buffer | undefined;
+    let mediaMimeType: string | undefined;
+    let filename: string | undefined;
 
-  if (!media) {
-    throw new Error("ERR_WAPP_DOWNLOAD_MEDIA");
-  }
+    try {
+        if (contentType && msg.message) {
+            const stream = await downloadContentFromMessage(msg.message[contentType as keyof proto.IMessage] as any, contentType.split('Message')[0] as any);
+            mediaData = Buffer.from([]);
+            for await (const chunk of stream) {
+                mediaData = Buffer.concat([mediaData, chunk]);
+            }
+            mediaMimeType = msg.message[contentType as keyof proto.IMessage]?.mimetype || undefined;
+            filename = msg.message[contentType as keyof proto.IMessage]?.fileName || undefined;
+        }
+    } catch (err) {
+        Sentry.captureException(err);
+    }
 
-  let randomId = makeRandomId(5);
+    if (!mediaData || !mediaMimeType) {
+        throw new Error("ERR_WAPP_DOWNLOAD_MEDIA");
+    }
 
-  if (!media.filename) {
-    const ext = media.mimetype.split("/")[1].split(";")[0];
-    media.filename = `${randomId}-${new Date().getTime()}.${ext}`;
-  } else {
-    media.filename = media.filename.split('.').slice(0,-1).join('.')+'.'+randomId+'.'+media.filename.split('.').slice(-1);
-  }
+    let randomId = makeRandomId(5);
+    let finalFilename = filename || `${randomId}-${new Date().getTime()}`;
 
-  try {
-    await writeFileAsync(
-      join(__dirname, "..", "..", "..", "public", media.filename),
-      media.data,
-      "base64"
-    );
-  } catch (err) {
-    Sentry.captureException(err);
-    logger.error(err);
-  }
+    if (!finalFilename.includes('.')) {
+        const ext = mediaMimeType.split("/")[1]?.split(";")[0] || 'bin';
+        finalFilename = `${finalFilename}.${ext}`;
+    } else {
+        const parts = finalFilename.split('.');
+        const ext = parts.pop();
+        finalFilename = `${parts.join('.')}.${randomId}.${ext}`;
+    }
 
-  const messageData = {
-    id: msg.id.id,
-    ticketId: ticket.id,
-    contactId: msg.fromMe ? undefined : contact.id,
-    body: msg.body || media.filename,
-    fromMe: msg.fromMe,
-    read: msg.fromMe,
-    mediaUrl: media.filename,
-    mediaType: media.mimetype.split("/")[0],
-    quotedMsgId: quotedMsg?.id
-  };
+    try {
+        await writeFileAsync(
+            join(__dirname, "..", "..", "..", "public", finalFilename),
+            mediaData
+        );
+    } catch (err) {
+        Sentry.captureException(err);
+    }
 
-  await ticket.update({ lastMessage: msg.body || media.filename });
-  const newMessage = await CreateMessageService({ messageData });
+    let caption = msg.message?.extendedTextMessage?.text || finalFilename;
+    if (!msg.key.fromMe && caption.startsWith('0')) {
+        caption = caption.substring(1);
+    }
 
-  return newMessage;
+    const messageData = {
+        id: msg.key.id,
+        ticketId: ticket.id,
+        contactId: msg.key.fromMe ? undefined : contact.id,
+        body: caption,
+        fromMe: msg.key.fromMe,
+        read: !msg.key.fromMe,
+        mediaUrl: finalFilename,
+        mediaType: mediaMimeType.split("/")[0],
+        quotedMsgId: quotedMsg?.id
+    };
+
+    await ticket.update({ lastMessage: caption });
+    const newMessage = await CreateMessageService({ messageData });
+
+    return newMessage;
 };
 
 const verifyMessage = async (
-  msg: WbotMessage,
-  ticket: Ticket,
-  contact: Contact
+    msg: WAMessage,
+    ticket: Ticket,
+    contact: Contact
 ) => {
+    const messageContent = extractMessageContent(msg.message);
+    
+    let body = messageContent?.conversation || messageContent?.extendedTextMessage?.text || '';
+    if (!msg.key.fromMe && body.startsWith('0')) {
+        body = body.substring(1);
+    }
+    
+    const quotedMsg = await verifyQuotedMessage(msg);
+    const messageData = {
+        id: msg.key.id,
+        ticketId: ticket.id,
+        contactId: msg.key.fromMe ? undefined : contact.id,
+        body: body,
+        fromMe: msg.key.fromMe,
+        mediaType: getContentType(messageContent) || 'chat',
+        read: !msg.key.fromMe,
+        quotedMsgId: quotedMsg?.id
+    };
 
-  if (msg.type === 'location')
-    msg = prepareLocation(msg);
-
-  const quotedMsg = await verifyQuotedMessage(msg);
-  const messageData = {
-    id: msg.id.id,
-    ticketId: ticket.id,
-    contactId: msg.fromMe ? undefined : contact.id,
-    body: msg.body,
-    fromMe: msg.fromMe,
-    mediaType: msg.type,
-    read: msg.fromMe,
-    quotedMsgId: quotedMsg?.id
-  };
-
-  // temporaryly disable ts checks because of type definition bug for Location object
-  // @ts-ignore
-  await ticket.update({ lastMessage: msg.type === "location" ? msg.location.description ? "Localization - " + msg.location.description.split('\\n')[0] : "Localization" : msg.body });
-
-  await CreateMessageService({ messageData });
-};
-
-const prepareLocation = (msg: WbotMessage): WbotMessage => {
-  let gmapsUrl = "https://maps.google.com/maps?q=" + msg.location.latitude + "%2C" + msg.location.longitude + "&z=17&hl=pt-BR";
-
-  msg.body = "data:image/png;base64," + msg.body + "|" + gmapsUrl;
-
-  // temporaryly disable ts checks because of type definition bug for Location object
-  // @ts-ignore
-  msg.body += "|" + (msg.location.description ? msg.location.description : (msg.location.latitude + ", " + msg.location.longitude))
-
-  return msg;
+    await ticket.update({ lastMessage: body });
+    await CreateMessageService({ messageData });
 };
 
 const verifyQueue = async (
-  wbot: Session,
-  msg: WbotMessage,
-  ticket: Ticket,
-  contact: Contact
+    wbot: WASocket,
+    msg: WAMessage,
+    ticket: Ticket,
+    contact: Contact
 ) => {
-  const { queues, greetingMessage } = await ShowWhatsAppService(wbot.id!);
+    const { queues, greetingMessage } = await ShowWhatsAppService(wbot.id!);
 
-  if (queues.length === 1) {
-    await UpdateTicketService({
-      ticketData: { queueId: queues[0].id },
-      ticketId: ticket.id
-    });
+    if (queues.length === 1) {
+        await UpdateTicketService({
+            ticketData: { queueId: queues[0].id },
+            ticketId: ticket.id
+        });
 
-    return;
-  }
+        const singleQueueDistribution = await Distribution.findOne({
+            where: { queueId: queues[0].id, isActive: true }
+        });
 
-  const selectedOption = msg.body;
+        if (singleQueueDistribution) {
+            try {
+                const nextUser = await GetNextUserService({ queueId: queues[0].id });
+                if (nextUser) {
+                    await UpdateTicketService({
+                        ticketData: { userId: nextUser.id },
+                        ticketId: ticket.id
+                    });
+                }
+            } catch (error) {
+                logger.error(`[verifyQueue] Erro ao buscar próximo usuário para fila ${queues[0].id}: ${error}`);
+            }
+        }
+        return;
+    }
 
-  const choosenQueue = queues[+selectedOption - 1];
+    const messageContent = extractMessageContent(msg.message);
+    const selectedOption = messageContent?.conversation || messageContent?.extendedTextMessage?.text;
 
-  if (choosenQueue) {
-    await UpdateTicketService({
-      ticketData: { queueId: choosenQueue.id },
-      ticketId: ticket.id
-    });
+    const numbers = selectedOption?.match(/\d+/g);
+    const lastNumber = numbers ? numbers[numbers.length - 1] : null;
+    
+    const isValidSelection = lastNumber && parseInt(lastNumber) >= 1 && parseInt(lastNumber) <= queues.length;
 
-    const body = formatBody(`\u200e${choosenQueue.greetingMessage}`, contact);
+    if (isValidSelection) {
+        const queueIndex = parseInt(lastNumber) - 1;
+        const choosenQueue = queues[queueIndex];
 
-    const sentMessage = await wbot.sendMessage(`${contact.number}@c.us`, body);
+        if (choosenQueue) {
+            await UpdateTicketService({
+                ticketData: { queueId: choosenQueue.id },
+                ticketId: ticket.id
+            });
+            
+            const distribution = await Distribution.findOne({
+                where: { queueId: choosenQueue.id, isActive: true }
+            });
 
-    await verifyMessage(sentMessage, ticket, contact);
-  } else {
-    let options = "";
+            if (distribution) {
+                try {
+                    const nextUser = await GetNextUserService({ queueId: choosenQueue.id });
+                    if (nextUser) {
+                        await UpdateTicketService({
+                            ticketData: { userId: nextUser.id },
+                            ticketId: ticket.id
+                        });
+                    }
+                } catch (error) {
+                    logger.error(`[verifyQueue] Erro ao buscar próximo usuário para fila ${choosenQueue.id}: ${error}`);
+                }
+            }
+        }
+    } else {
+        let options = "";
+        queues.forEach((queue, index) => {
+            options += `*${index + 1}* - ${queue.name}\n`;
+        });
 
-    queues.forEach((queue, index) => {
-      options += `*${index + 1}* - ${queue.name}\n`;
-    });
+        const menuMessage = greetingMessage || "Selecione uma opção:";
+        const body = formatBody(`\u200e${menuMessage}\n\n${options}`, contact);
 
-    const body = formatBody(`\u200e${greetingMessage}\n${options}`, contact);
-
-    const debouncedSentMessage = debounce(
-      async () => {
-        const sentMessage = await wbot.sendMessage(
-          `${contact.number}@c.us`,
-          body
+        const debouncedSentMessage = debounce(
+            async () => {
+                await wbot.sendMessage(contact.number + '@s.whatsapp.net', { text: body });
+                const sentMsgForVerification: WAMessage = {
+                    key: {
+                        remoteJid: contact.number + '@s.whatsapp.net',
+                        fromMe: true,
+                        id: `msg-${Date.now()}`
+                    },
+                    message: {
+                        conversation: body
+                    },
+                    messageTimestamp: Date.now() / 1000,
+                    pushName: 'Bot',
+                    messageStubType: proto.WebMessageInfo.StubType.NONE,
+                    broadcast: false,
+                    status: proto.WebMessageInfo.Status.PENDING
+                };
+                verifyMessage(sentMsgForVerification, ticket, contact);
+            },
+            3000,
+            ticket.id
         );
-        verifyMessage(sentMessage, ticket, contact);
-      },
-      3000,
-      ticket.id
-    );
 
-    debouncedSentMessage();
-  }
+        debouncedSentMessage();
+    }
 };
 
-const isValidMsg = (msg: WbotMessage): boolean => {
-  if (msg.from === "status@broadcast") return false;
-  if (
-    msg.type === "chat" ||
-    msg.type === "audio" ||
-    msg.type === "ptt" ||
-    msg.type === "video" ||
-    msg.type === "image" ||
-    msg.type === "document" ||
-    msg.type === "vcard" ||
-    //msg.type === "multi_vcard" ||
-    msg.type === "sticker" ||
-    msg.type === "location"
-  )
-    return true;
-  return false;
+const isValidMsg = (msg: WAMessage): boolean => {
+    if (msg.key.remoteJid === 'status@broadcast') {
+        return false;
+    }
+
+    const contentType = getContentType(msg.message);
+
+    const validTypes = [
+        "conversation", "extendedTextMessage", "imageMessage", "videoMessage", 
+        "audioMessage", "documentMessage", "stickerMessage", "locationMessage", 
+        "contactMessage", "contactsArrayMessage", "reactionMessage"
+    ];
+
+    const ignoredTypes = ["protocolMessage", "callNotificationMessage", "unknown"];
+
+    if (validTypes.includes(contentType!)) {
+        return true;
+    }
+
+    if (ignoredTypes.includes(contentType!)) {
+        return false;
+    }
+
+    return false;
 };
 
-const handleMessage = async (
-  msg: WbotMessage,
-  wbot: Session
+export const handleMessage = async (
+    msg: WAMessage,
+    wbot: WASocket
 ): Promise<void> => {
-  if (!isValidMsg(msg)) {
-    return;
-  }
-
-  try {
-    let msgContact: WbotContact;
-    let groupContact: Contact | undefined;
-
-    if (msg.fromMe) {
-      // messages sent automatically by wbot have a special character in front of it
-      // if so, this message was already been stored in database;
-      if (/\u200e/.test(msg.body[0])) return;
-
-      // media messages sent from me from cell phone, first comes with "hasMedia = false" and type = "image/ptt/etc"
-      // in this case, return and let this message be handled by "media_uploaded" event, when it will have "hasMedia = true"
-
-      if (!msg.hasMedia && msg.type !== "location" && msg.type !== "chat" && msg.type !== "vcard"
-        //&& msg.type !== "multi_vcard"
-      ) return;
-
-      msgContact = await wbot.getContactById(msg.to);
-    } else {
-      msgContact = await msg.getContact();
+    if (processedMessageIds.has(msg.key.id!)) {
+        return;
     }
+    processedMessageIds.add(msg.key.id!);
+    setTimeout(() => processedMessageIds.delete(msg.key.id!), 5000);
 
-    const chat = await msg.getChat();
+    try {
+        const io = getIO();
+        const isGroup = msg.key.remoteJid?.endsWith('@g.us') || false;
 
-    if (chat.isGroup) {
-      let msgGroupContact;
-
-      if (msg.fromMe) {
-        msgGroupContact = await wbot.getContactById(msg.to);
-      } else {
-        msgGroupContact = await wbot.getContactById(msg.from);
-      }
-
-      groupContact = await verifyContact(msgGroupContact);
-    }
-    const whatsapp = await ShowWhatsAppService(wbot.id!);
-
-    const unreadMessages = msg.fromMe ? 0 : chat.unreadCount;
-
-    const contact = await verifyContact(msgContact);
-
-    if (
-      unreadMessages === 0 &&
-      whatsapp.farewellMessage &&
-      formatBody(whatsapp.farewellMessage, contact) === msg.body
-    )
-      return;
-
-    const ticket = await FindOrCreateTicketService(
-      contact,
-      wbot.id!,
-      unreadMessages,
-      groupContact
-    );
-
-    if (msg.hasMedia) {
-      await verifyMediaMessage(msg, ticket, contact);
-    } else {
-      await verifyMessage(msg, ticket, contact);
-    }
-
-    if (
-      !ticket.queue &&
-      !chat.isGroup &&
-      !msg.fromMe &&
-      !ticket.userId &&
-      whatsapp.queues.length >= 1
-    ) {
-      await verifyQueue(wbot, msg, ticket, contact);
-    }
-
-    if (msg.type === "vcard") {
-      try {
-        const array = msg.body.split("\n");
-        const obj = [];
-        let contact = "";
-        for (let index = 0; index < array.length; index++) {
-          const v = array[index];
-          const values = v.split(":");
-          for (let ind = 0; ind < values.length; ind++) {
-            if (values[ind].indexOf("+") !== -1) {
-              obj.push({ number: values[ind] });
-            }
-            if (values[ind].indexOf("FN") !== -1) {
-              contact = values[ind + 1];
-            }
-          }
-        }
-        for await (const ob of obj) {
-          const cont = await CreateContactService({
-            name: contact,
-            number: ob.number.replace(/\D/g, "")
-          });
-        }
-      } catch (error) {
-        console.log(error);
-      }
-    }
-
-    /* if (msg.type === "multi_vcard") {
-      try {
-        const array = msg.vCards.toString().split("\n");
-        let name = "";
-        let number = "";
-        const obj = [];
-        const conts = [];
-        for (let index = 0; index < array.length; index++) {
-          const v = array[index];
-          const values = v.split(":");
-          for (let ind = 0; ind < values.length; ind++) {
-            if (values[ind].indexOf("+") !== -1) {
-              number = values[ind];
-            }
-            if (values[ind].indexOf("FN") !== -1) {
-              name = values[ind + 1];
-            }
-            if (name !== "" && number !== "") {
-              obj.push({
-                name,
-                number
-              });
-              name = "";
-              number = "";
-            }
-          }
+        if (isGroup || !isValidMsg(msg)) {
+            return;
         }
 
-        // eslint-disable-next-line no-restricted-syntax
-        for await (const ob of obj) {
-          try {
-            const cont = await CreateContactService({
-              name: ob.name,
-              number: ob.number.replace(/\D/g, "")
+        let msgContact: Contact;
+        let groupContact: Contact | undefined;
+
+        if (msg.key.fromMe) {
+            if (msg.message?.conversation?.startsWith('\u200e') || msg.message?.extendedTextMessage?.text?.startsWith('\u200e')) {
+                return;
+            }
+            msgContact = await verifyContact(msg, wbot);
+        } else {
+            msgContact = await verifyContact(msg, wbot);
+            try {
+                await wbot.readMessages([msg.key]);
+            } catch (err) {
+                // Silent error
+            }
+        }
+
+        const whatsapp = await ShowWhatsAppService(wbot.id!);
+        const unreadMessages = msg.key.fromMe ? 0 : 1;
+        const contact = await verifyContact(msg, wbot);
+
+        const ticket = await FindOrCreateTicketService(
+            contact,
+            wbot.id!,
+            unreadMessages,
+            groupContact
+        );
+
+        if (!ticket.isNewRecord && ticket.status === 'pending' && ticket.queueId) {
+            await UpdateTicketService({
+                ticketData: { queueId: null },
+                ticketId: ticket.id
             });
-            conts.push({
-              id: cont.id,
-              name: cont.name,
-              number: cont.number
+            ticket.queueId = null;
+        }
+
+        if (ticket.isNewRecord && ticket.queueId) {
+            const distribution = await Distribution.findOne({
+                where: { queueId: ticket.queueId, isActive: true }
             });
-          } catch (error) {
-            if (error.message === "ERR_DUPLICATED_CONTACT") {
-              const cont = await GetContactService({
-                name: ob.name,
-                number: ob.number.replace(/\D/g, ""),
-                email: ""
-              });
-              conts.push({
-                id: cont.id,
-                name: cont.name,
-                number: cont.number
-              });
+
+            if (distribution) {
+                try {
+                    const nextUser = await GetNextUserService({ queueId: ticket.queueId });
+                    if (nextUser && nextUser.id) {
+                        await UpdateTicketService({
+                            ticketData: { userId: nextUser.id },
+                            ticketId: ticket.id
+                        });
+                        
+                        io.to(ticket.status).emit(`ticket-${ticket.id}`, { action: "update", ticket });
+                        io.to(ticket.status).emit(`ticket`, { action: "update", ticket });
+                    }
+                } catch (error) {
+                    logger.error(`[handleMessage] Erro ao buscar próximo usuário para fila ${ticket.queueId}: ${error}`);
+                }
             }
-          }
         }
-        msg.body = JSON.stringify(conts);
-      } catch (error) {
-        console.log(error);
-      }
-    } */
-  } catch (err) {
-    Sentry.captureException(err);
-    logger.error(`Error handling whatsapp message: Err: ${err}`);
-  }
-};
 
-const handleMsgAck = async (msg: WbotMessage, ack: MessageAck) => {
-  await new Promise(r => setTimeout(r, 500));
-
-  const io = getIO();
-
-  try {
-    const messageToUpdate = await Message.findByPk(msg.id.id, {
-      include: [
-        "contact",
-        {
-          model: Message,
-          as: "quotedMsg",
-          include: ["contact"]
+        const messageContentType = getContentType(msg.message);
+        if (messageContentType && (messageContentType.includes('Message') && messageContentType !== 'conversation' && messageContentType !== 'extendedTextMessage')) {
+            await verifyMediaMessage(msg, ticket, contact);
+        } else {
+            await verifyMessage(msg, ticket, contact);
         }
-      ]
-    });
-    if (!messageToUpdate) {
-      return;
+
+        const createdMessage = await Message.findByPk(msg.key.id!, {
+            include: ["contact", "ticket", { model: Message, as: "quotedMsg", include: ["contact"] }]
+        });
+
+        if (createdMessage) {
+            io.to(ticket.id.toString()).emit("appMessage", { action: "create", message: createdMessage, ticket, contact });
+            io.to(ticket.status).emit(`ticket-${ticket.id}`, { action: "update", ticket });
+            io.to(ticket.status).emit(`ticket`, { action: "update", ticket });
+            io.to(contact.id).emit("contact", { action: "update", contact });
+        }
+
+        if (
+            ticket.status === 'pending' &&
+            !ticket.userId &&
+            !ticket.queueId &&
+            !isGroup &&
+            !msg.key.fromMe &&
+            whatsapp.queues.length >= 1 &&
+            !msg.message?.conversation?.startsWith('\u200e') &&
+            !msg.message?.extendedTextMessage?.text?.startsWith('\u200e')
+        ) {
+            const messageContent = extractMessageContent(msg.message);
+            const messageText = messageContent?.conversation || messageContent?.extendedTextMessage?.text || '';
+            const numbers = messageText.match(/\d+/g);
+            const lastNumber = numbers ? numbers[numbers.length - 1] : null;
+            
+            if (lastNumber && parseInt(lastNumber) >= 1 && parseInt(lastNumber) <= whatsapp.queues.length) {
+                await verifyQueue(wbot, msg, ticket, contact);
+            } else {
+                await verifyQueue(wbot, msg, ticket, contact);
+            }
+        }
+
+        if (messageContentType === "contactMessage") {
+            try {
+                const vcard = msg.message?.contactMessage?.vcard;
+                if (vcard) {
+                    const nameMatch = vcard.match(/FN:(.*?)\n/);
+                    const numberMatch = vcard.match(/waid=(\d+):/);
+                    const name = nameMatch ? nameMatch[1] : "Contato Desconhecido";
+                    const number = numberMatch ? numberMatch[1] : "";
+
+                    if (number) {
+                        await CreateContactService({ name, number });
+                    }
+                }
+            } catch (error) {
+                Sentry.captureException(error);
+            }
+        }
+
+    } catch (err) {
+        Sentry.captureException(err);
+        logger.error(`[handleMessage] Erro geral ao lidar com a mensagem. ID: ${msg.key.id}, Erro: ${err}`);
     }
-    await messageToUpdate.update({ ack });
-
-    io.to(messageToUpdate.ticketId.toString()).emit("appMessage", {
-      action: "update",
-      message: messageToUpdate
-    });
-  } catch (err) {
-    Sentry.captureException(err);
-    logger.error(`Error handling message ack. Err: ${err}`);
-  }
 };
 
-const wbotMessageListener = (wbot: Session): void => {
-  wbot.on("message_create", async msg => {
-    handleMessage(msg, wbot);
-  });
+export const handleMsgAck = async (update: { key: proto.IMessageKey; update: { status: proto.WebMessageInfo.Status | null | undefined; }; }, ackStatus: proto.WebMessageInfo.Status) => {
+    await new Promise(r => setTimeout(r, 500));
+    const io = getIO();
 
-  wbot.on("media_uploaded", async msg => {
-    handleMessage(msg, wbot);
-  });
+    try {
+        const messageToUpdate = await Message.findByPk(update.key.id!, {
+            include: [ "contact", { model: Message, as: "quotedMsg", include: ["contact"] }]
+        });
 
-  wbot.on("message_ack", async (msg, ack) => {
-    handleMsgAck(msg, ack);
-  });
+        if (!messageToUpdate) {
+            return;
+        }
+
+        if (messageToUpdate.ack !== ackStatus) {
+            await messageToUpdate.update({ ack: ackStatus });
+
+            io.to(messageToUpdate.ticketId.toString()).emit("appMessage", {
+                action: "update",
+                message: messageToUpdate
+            });
+        }
+
+    } catch (err) {
+        Sentry.captureException(err);
+        logger.error(`[handleMsgAck] Erro ao lidar com ACK da mensagem. ID: ${update.key.id}, Err: ${err}.`);
+    }
 };
 
-export { wbotMessageListener, handleMessage };
+export { handleMessage, handleMsgAck };

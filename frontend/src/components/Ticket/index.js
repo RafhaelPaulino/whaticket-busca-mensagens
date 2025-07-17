@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useParams, useHistory } from "react-router-dom";
 
 import { toast } from "react-toastify";
@@ -82,26 +82,33 @@ const Ticket = () => {
   const [loading, setLoading] = useState(true);
   const [contact, setContact] = useState({});
   const [ticket, setTicket] = useState({});
+  const [messageToScrollToId, setMessageToScrollToId] = useState(null);
 
+ 
   useEffect(() => {
-    setLoading(true);
-    const delayDebounceFn = setTimeout(() => {
-      const fetchTicket = async () => {
-        try {
-          const { data } = await api.get("/tickets/" + ticketId);
-
-          setContact(data.contact);
-          setTicket(data);
-          setLoading(false);
-        } catch (err) {
-          setLoading(false);
-          toastError(err);
+    const fetchTicket = async () => {
+      if (!ticketId) return;
+      
+      setLoading(true);
+      try {
+        const { data } = await api.get(`/tickets/${ticketId}`);
+        setContact(data.contact);
+        setTicket(data);
+      } catch (err) {
+        toastError(err);
+       
+        if (err.response?.status === 404) {
+          history.push("/tickets");
         }
-      };
-      fetchTicket();
-    }, 500);
-    return () => clearTimeout(delayDebounceFn);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+
+    fetchTicket();
   }, [ticketId, history]);
+
 
   useEffect(() => {
     const socket = openSocket();
@@ -135,13 +142,28 @@ const Ticket = () => {
     };
   }, [ticketId, history]);
 
-  const handleDrawerOpen = () => {
+  const handleDrawerOpen = useCallback(() => {
     setDrawerOpen(true);
-  };
+  }, []);
 
-  const handleDrawerClose = () => {
+  const handleDrawerClose = useCallback(() => {
     setDrawerOpen(false);
-  };
+  }, []);
+
+  const handleNavigateToMessage = useCallback((messageId) => {
+   
+    setMessageToScrollToId(null);
+    
+
+    setTimeout(() => {
+      setMessageToScrollToId(messageId);
+    }, 50);
+  }, []);
+
+
+  useEffect(() => {
+    setMessageToScrollToId(null);
+  }, [ticketId]);
 
   return (
     <div className={classes.root} id="drawer-container">
@@ -161,14 +183,19 @@ const Ticket = () => {
             />
           </div>
           <div className={classes.ticketActionButtons}>
-            <TicketActionButtons ticket={ticket} />
+            <TicketActionButtons
+              ticket={ticket}
+              onNavigateToMessage={handleNavigateToMessage}
+            />
           </div>
         </TicketHeader>
         <ReplyMessageProvider>
+          {/* ✅ COMPONENTE PRINCIPAL OTIMIZADO */}
           <MessagesList
             ticketId={ticketId}
             isGroup={ticket.isGroup}
-          ></MessagesList>
+            messageToScrollToId={messageToScrollToId}
+          />
           <MessageInput ticketStatus={ticket.status} />
         </ReplyMessageProvider>
       </Paper>

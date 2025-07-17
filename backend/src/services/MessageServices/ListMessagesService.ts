@@ -1,57 +1,117 @@
-import AppError from "../../errors/AppError";
-import Message from "../../models/Message";
-import Ticket from "../../models/Ticket";
-import ShowTicketService from "../TicketServices/ShowTicketService";
+import { QueryTypes } from "sequelize";
+import database from "../../database";
 
-interface Request {
-  ticketId: string;
-  pageNumber?: string;
+interface ListMessagesParams {
+  ticketId: string | number;
+  pageNumber?: number;
+  limit?: number;
 }
 
-interface Response {
-  messages: Message[];
-  ticket: Ticket;
-  count: number;
-  hasMore: boolean;
+interface MessageResult {
+  id: string;
+  body: string;
+  mediaUrl: string;
+  mediaType: string;
+  isDeleted: boolean;
+  fromMe: boolean;
+  read: boolean;
+  quotedMsgId: string;
+  ack: number;
+  createdAt: Date;
+  updatedAt: Date;
+  ticketId: number;
+  contactId: number;
 }
 
 const ListMessagesService = async ({
-  pageNumber = "1",
-  ticketId
-}: Request): Promise<Response> => {
-  const ticket = await ShowTicketService(ticketId);
+  ticketId,
+  pageNumber = 1,
+  limit = 20
+}: ListMessagesParams) => {
+  const offset = (pageNumber - 1) * limit;
+  
+  console.time(`ListMessages-Ticket-${ticketId}-Page-${pageNumber}`);
+  
+  try {
 
-  if (!ticket) {
-    throw new AppError("ERR_NO_TICKET_FOUND", 404);
+    const query = `
+      SELECT 
+        id,
+        body,
+        mediaUrl,
+        mediaType,
+        isDeleted,
+        fromMe,
+        \`read\`,
+        quotedMsgId,
+        ack,
+        createdAt,
+        updatedAt,
+        ticketId,
+        contactId
+      FROM Messages
+      WHERE ticketId = ?
+      ORDER BY createdAt DESC, id DESC
+      LIMIT ? OFFSET ?
+    `;
+
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM Messages
+      WHERE ticketId = ?
+    `;
+
+  
+    const [messagesResult, countResult] = await Promise.all([
+      database.query(query, {
+        type: QueryTypes.SELECT,
+        replacements: [ticketId, limit, offset]
+      }) as Promise<MessageResult[]>,
+      
+      database.query(countQuery, {
+        type: QueryTypes.SELECT,
+        replacements: [ticketId]
+      }) as Promise<Array<{total: number}>>
+    ]);
+
+    console.timeEnd(`ListMessages-Ticket-3-Page-${pageNumber}`);
+
+ 
+    const messages = messagesResult.map(row => ({
+      id: row.id,
+      body: row.body,
+      mediaUrl: row.mediaUrl,
+      mediaType: row.mediaType,
+      isDeleted: row.isDeleted,
+      fromMe: row.fromMe,
+      read: row.read,
+      quotedMsgId: row.quotedMsgId,
+      ack: row.ack,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      ticketId: row.ticketId,
+   
+      contact: null,
+      quotedMsg: null
+    }));
+
+    const total = countResult[0]?.total || 0;
+    const hasMore = total > offset + limit;
+
+    console.log(`✅ ListMessages ULTRA-FAST: ${messages.length} messages loaded for ticket ${ticketId}, page ${pageNumber}`);
+
+    return {
+      messages: messages.reverse(), 
+      count: total,
+      hasMore
+    };
+
+  } catch (error) {
+    console.error(`❌ Error in ListMessagesService for ticket ${ticketId}:`, error);
+    console.timeEnd(`ListMessages-Ticket-${ticketId}-Page-${pageNumber}`);
+    
+    throw new Error(`Failed to load messages for ticket ${ticketId}: ${error.message}`);
   }
-
-  // await setMessagesAsRead(ticket);
-  const limit = 20;
-  const offset = limit * (+pageNumber - 1);
-
-  const { count, rows: messages } = await Message.findAndCountAll({
-    where: { ticketId },
-    limit,
-    include: [
-      "contact",
-      {
-        model: Message,
-        as: "quotedMsg",
-        include: ["contact"]
-      }
-    ],
-    offset,
-    order: [["createdAt", "DESC"]]
-  });
-
-  const hasMore = count > offset + messages.length;
-
-  return {
-    messages: messages.reverse(),
-    ticket,
-    count,
-    hasMore
-  };
 };
 
 export default ListMessagesService;

@@ -1,53 +1,44 @@
-import fs from "fs";
-import { MessageMedia, Message as WbotMessage, MessageSendOptions } from "whatsapp-web.js";
+import { getWbot } from "../../libs/wbot";
+import { WAMessageContent } from '@whiskeysockets/baileys'; 
+import { logger } from "../../utils/logger";
 import AppError from "../../errors/AppError";
-import GetTicketWbot from "../../helpers/GetTicketWbot";
-import Ticket from "../../models/Ticket";
-
-import formatBody from "../../helpers/Mustache";
 
 interface Request {
-  media: Express.Multer.File;
-  ticket: Ticket;
-  body?: string;
+  whatsappId: number;
+  contactId: string; 
+  media: {
+    data: Buffer;
+    mimetype: string;
+    filename?: string;
+  };
+  caption?: string;
 }
 
 const SendWhatsAppMedia = async ({
+  whatsappId,
+  contactId,
   media,
-  ticket,
-  body
-}: Request): Promise<WbotMessage> => {
+  caption
+}: Request): Promise<void> => {
   try {
-    const wbot = await GetTicketWbot(ticket);
-    const hasBody = body
-      ? formatBody(body as string, ticket.contact)
-      : undefined;
+    const wbot = getWbot(whatsappId);
 
-    const newMedia = MessageMedia.fromFilePath(media.path);
-    
-    let mediaOptions:MessageSendOptions = {
-        caption: hasBody,
-        sendAudioAsVoice: true
+   
+    const messageContent: WAMessageContent = {
+      [media.mimetype.includes('image') ? 'image' : media.mimetype.includes('video') ? 'video' : 'document']: media.data,
+      mimetype: media.mimetype,
+      fileName: media.filename,
+      caption: caption || ''
     };
 
-    if (newMedia.mimetype.startsWith('image/') && ! /^.*\.(jpe?g|png|gif)?$/i.exec(media.filename)) {
-       mediaOptions['sendMediaAsDocument'] = true;
-    }
     
-    const sentMessage = await wbot.sendMessage(
-      `${ticket.contact.number}@${ticket.isGroup ? "g" : "c"}.us`,
-      newMedia,
-      mediaOptions
-    );
+    await wbot.sendMessage(contactId + '@s.whatsapp.net', messageContent);
 
-    await ticket.update({ lastMessage: body || media.filename });
+    logger.info(`[SendWhatsAppMedia] Mídia enviada com sucesso para ${contactId} via WhatsApp ${whatsappId}.`);
 
-    fs.unlinkSync(media.path);
-
-    return sentMessage;
   } catch (err) {
-    console.log(err);
-    throw new AppError("ERR_SENDING_WAPP_MSG");
+    logger.error(`[SendWhatsAppMedia] Erro ao enviar mídia para ${contactId} via WhatsApp ${whatsappId}. Err: ${err}`);
+    throw new AppError("ERR_SENDING_WAPP_MEDIA");
   }
 };
 
