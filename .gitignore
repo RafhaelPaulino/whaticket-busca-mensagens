@@ -61,3 +61,7 @@ frontend/Dockerfile
 # Scripts de desenvolvimento
 backend/generateFakeMessages.js
 backend/.sequelizerc
+
+# Uploads de usuários (NUNCA commitar)
+**/public/**
+!**/public/.gitkeep
