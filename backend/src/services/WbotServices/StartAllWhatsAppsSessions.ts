@@ -1,11 +1,12 @@
-import ListWhatsAppsService from "../WhatsappService/ListWhatsAppsService";
-import { StartWhatsAppSession } from "./StartWhatsAppSession";
+import Whatsapp from "../../models/Whatsapp";
+import StartWhatsAppSession from "./StartWhatsAppSession"; 
 
-export const StartAllWhatsAppsSessions = async (): Promise<void> => {
-  const whatsapps = await ListWhatsAppsService();
-  if (whatsapps.length > 0) {
-    whatsapps.forEach(whatsapp => {
-      StartWhatsAppSession(whatsapp);
-    });
-  }
+const StartAllWhatsAppsSessions = async (): Promise<void> => {
+  const whatsapps = await Whatsapp.findAll();
+
+  whatsapps.forEach(whatsapp => {
+    StartWhatsAppSession(whatsapp);
+  });
 };
+
+export default StartAllWhatsAppsSessions;

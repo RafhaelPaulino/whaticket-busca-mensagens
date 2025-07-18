@@ -1,26 +1,20 @@
 import { initWbot } from "../../libs/wbot";
 import Whatsapp from "../../models/Whatsapp";
-import { wbotMessageListener } from "./wbotMessageListener";
 import { getIO } from "../../libs/socket";
-import wbotMonitor from "./wbotMonitor";
 import { logger } from "../../utils/logger";
 
-export const StartWhatsAppSession = async (
-  whatsapp: Whatsapp
-): Promise<void> => {
-  await whatsapp.update({ status: "OPENING" });
 
-  const io = getIO();
-  io.emit("whatsappSession", {
-    action: "update",
-    session: whatsapp
-  });
-
+const StartWhatsAppSession = async (whatsapp: Whatsapp): Promise<void> => {
+  logger.info(`[StartWhatsAppSession] Iniciando sessão para WhatsApp ID: ${whatsapp.id}, Nome: ${whatsapp.name}`);
   try {
     const wbot = await initWbot(whatsapp);
-    wbotMessageListener(wbot);
-    wbotMonitor(wbot, whatsapp);
+    
+   
+    logger.info(`[StartWhatsAppSession] Sessão WhatsApp ${whatsapp.id} iniciada com sucesso.`);
+
   } catch (err) {
-    logger.error(err);
+    logger.error(`[StartWhatsAppSession] Erro ao iniciar sessão para WhatsApp ID: ${whatsapp.id}. Err: ${err}`);
   }
 };
+
+export default StartWhatsAppSession;

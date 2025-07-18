@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useHistory } from "react-router-dom";
 import openSocket from "../../services/socket-io";
 
@@ -13,18 +13,58 @@ const useAuth = () => {
 	const [isAuth, setIsAuth] = useState(false);
 	const [loading, setLoading] = useState(true);
 	const [user, setUser] = useState({});
+	
+	const isMountedRef = useRef(true);
+	const socketRef = useRef(null);
+	const refreshTokenTimeoutRef = useRef(null);
+
+	const cleanupSocket = useCallback(() => {
+		if (socketRef.current) {
+			socketRef.current.off("user");
+			socketRef.current.disconnect();
+			socketRef.current = null;
+		}
+	}, []);
+
+	const clearRefreshTimeout = useCallback(() => {
+		if (refreshTokenTimeoutRef.current) {
+			clearTimeout(refreshTokenTimeoutRef.current);
+			refreshTokenTimeoutRef.current = null;
+		}
+	}, []);
+
+	useEffect(() => {
+		isMountedRef.current = true;
+		
+		return () => {
+			isMountedRef.current = false;
+			cleanupSocket();
+			clearRefreshTimeout();
+		};
+	}, [cleanupSocket, clearRefreshTimeout]);
 
 	api.interceptors.request.use(
 		config => {
 			const token = localStorage.getItem("token");
 			if (token) {
-				config.headers["Authorization"] = `Bearer ${JSON.parse(token)}`;
-				setIsAuth(true);
+				try {
+					const parsedToken = JSON.parse(token);
+					config.headers["Authorization"] = `Bearer ${parsedToken}`;
+					if (isMountedRef.current) {
+						setIsAuth(true);
+					}
+				} catch (error) {
+					console.error("Erro ao fazer parse do token:", error);
+					localStorage.removeItem("token");
+					if (isMountedRef.current) {
+						setIsAuth(false);
+					}
+				}
 			}
 			return config;
 		},
 		error => {
-			Promise.reject(error);
+			return Promise.reject(error);
 		}
 	);
 
@@ -34,92 +74,204 @@ const useAuth = () => {
 		},
 		async error => {
 			const originalRequest = error.config;
+			
 			if (error?.response?.status === 403 && !originalRequest._retry) {
 				originalRequest._retry = true;
 
-				const { data } = await api.post("/auth/refresh_token");
-				if (data) {
-					localStorage.setItem("token", JSON.stringify(data.token));
-					api.defaults.headers.Authorization = `Bearer ${data.token}`;
+				try {
+					const { data } = await api.post("/auth/refresh_token");
+					
+					if (data && isMountedRef.current) {
+						localStorage.setItem("token", JSON.stringify(data.token));
+						api.defaults.headers.Authorization = `Bearer ${data.token}`;
+						
+						return api(originalRequest);
+					}
+				} catch (refreshError) {
+					console.error("Erro ao renovar token:", refreshError);
+					
+					if (isMountedRef.current) {
+						localStorage.removeItem("token");
+						api.defaults.headers.Authorization = undefined;
+						setIsAuth(false);
+						setUser({});
+						
+						if (!window.location.pathname.includes('/login')) {
+							history.push('/login');
+						}
+					}
 				}
-				return api(originalRequest);
 			}
+			
 			if (error?.response?.status === 401) {
-				localStorage.removeItem("token");
-				api.defaults.headers.Authorization = undefined;
-				setIsAuth(false);
+				if (isMountedRef.current) {
+					localStorage.removeItem("token");
+					api.defaults.headers.Authorization = undefined;
+					setIsAuth(false);
+					setUser({});
+					
+					if (!window.location.pathname.includes('/login')) {
+						history.push('/login');
+					}
+				}
 			}
+			
 			return Promise.reject(error);
 		}
 	);
 
 	useEffect(() => {
-		const token = localStorage.getItem("token");
-		(async () => {
-			if (token) {
+		const initializeAuth = async () => {
+			const token = localStorage.getItem("token");
+			
+			if (token && isMountedRef.current) {
 				try {
 					const { data } = await api.post("/auth/refresh_token");
-					api.defaults.headers.Authorization = `Bearer ${data.token}`;
-					setIsAuth(true);
-					setUser(data.user);
+					
+					if (data && isMountedRef.current) {
+						api.defaults.headers.Authorization = `Bearer ${data.token}`;
+						setIsAuth(true);
+						setUser(data.user);
+						localStorage.setItem("token", JSON.stringify(data.token));
+					}
 				} catch (err) {
-					toastError(err);
+					console.error("Erro na inicialização da autenticação:", err);
+					
+					if (isMountedRef.current) {
+						localStorage.removeItem("token");
+						api.defaults.headers.Authorization = undefined;
+						setIsAuth(false);
+						setUser({});
+					}
+					
+					if (err?.response?.status !== 401 && err?.response?.status !== 403) {
+						toastError(err);
+					}
 				}
 			}
-			setLoading(false);
-		})();
+			
+			if (isMountedRef.current) {
+				setLoading(false);
+			}
+		};
+
+		initializeAuth();
 	}, []);
 
 	useEffect(() => {
+		if (!isAuth || !user.id || !isMountedRef.current) return;
+
+		cleanupSocket();
+
 		const socket = openSocket();
+		socketRef.current = socket;
+
+		if (!socket) return;
+
+		socket.on("connect", () => {
+			console.log("Socket conectado para usuário:", user.name || user.id);
+		});
 
 		socket.on("user", data => {
-			if (data.action === "update" && data.user.id === user.id) {
+			if (data.action === "update" && data.user.id === user.id && isMountedRef.current) {
+				console.log("Dados do usuário atualizados:", data.user.name);
 				setUser(data.user);
 			}
 		});
 
-		return () => {
-			socket.disconnect();
-		};
-	}, [user]);
+		socket.on("connect_error", (error) => {
+			console.error("Erro na conexão do socket (useAuth):", error.message);
+		});
 
-	const handleLogin = async userData => {
+		socket.on("disconnect", (reason) => {
+			console.log("Socket desconectado (useAuth):", reason);
+		});
+
+		socket.on("reconnect", (attemptNumber) => {
+			console.log(`Socket reconectado na tentativa ${attemptNumber}`);
+		});
+
+		return () => {
+			if (socket && socket.connected) {
+				socket.off("connect");
+				socket.off("user");
+				socket.off("connect_error");
+				socket.off("disconnect");
+				socket.off("reconnect");
+				socket.disconnect();
+			}
+		};
+	}, [isAuth, user.id, cleanupSocket]);
+
+	const handleLogin = useCallback(async (userData) => {
+		if (!isMountedRef.current) return;
+		
 		setLoading(true);
 
 		try {
 			const { data } = await api.post("/auth/login", userData);
-			localStorage.setItem("token", JSON.stringify(data.token));
-			api.defaults.headers.Authorization = `Bearer ${data.token}`;
-			setUser(data.user);
-			setIsAuth(true);
-			toast.success(i18n.t("auth.toasts.success"));
-			history.push("/tickets");
-			setLoading(false);
+			
+			if (data && isMountedRef.current) {
+				localStorage.setItem("token", JSON.stringify(data.token));
+				api.defaults.headers.Authorization = `Bearer ${data.token}`;
+				setUser(data.user);
+				setIsAuth(true);
+				
+				toast.success(i18n.t("auth.toasts.success"));
+				
+				setTimeout(() => {
+					if (isMountedRef.current) {
+						history.push("/tickets");
+					}
+				}, 100);
+			}
 		} catch (err) {
+			console.error("Erro no login:", err);
 			toastError(err);
-			setLoading(false);
+		} finally {
+			if (isMountedRef.current) {
+				setLoading(false);
+			}
 		}
-	};
+	}, [history]);
 
-	const handleLogout = async () => {
+	const handleLogout = useCallback(async () => {
+		if (!isMountedRef.current) return;
+		
 		setLoading(true);
 
 		try {
 			await api.delete("/auth/logout");
-			setIsAuth(false);
-			setUser({});
-			localStorage.removeItem("token");
-			api.defaults.headers.Authorization = undefined;
-			setLoading(false);
-			history.push("/login");
 		} catch (err) {
-			toastError(err);
-			setLoading(false);
+			console.warn("Erro ao fazer logout no servidor:", err);
+		} finally {
+			if (isMountedRef.current) {
+				setIsAuth(false);
+				setUser({});
+				localStorage.removeItem("token");
+				api.defaults.headers.Authorization = undefined;
+				
+				cleanupSocket();
+				clearRefreshTimeout();
+				
+				setLoading(false);
+				
+				setTimeout(() => {
+					if (isMountedRef.current) {
+						history.push("/login");
+					}
+				}, 100);
+			}
 		}
-	};
+	}, [history, cleanupSocket, clearRefreshTimeout]);
 
-	return { isAuth, user, loading, handleLogin, handleLogout };
+	return { 
+		isAuth, 
+		user, 
+		loading, 
+		handleLogin, 
+		handleLogout
+	};
 };
 
 export default useAuth;

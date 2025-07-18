@@ -1,6 +1,7 @@
 import CheckContactOpenTickets from "../../helpers/CheckContactOpenTickets";
 import SetTicketMessagesAsRead from "../../helpers/SetTicketMessagesAsRead";
 import { getIO } from "../../libs/socket";
+import { logger } from "../../utils/logger";
 import Ticket from "../../models/Ticket";
 import SendWhatsAppMessage from "../WbotServices/SendWhatsAppMessage";
 import ShowWhatsAppService from "../WhatsappService/ShowWhatsAppService";
@@ -28,6 +29,8 @@ const UpdateTicketService = async ({
   ticketData,
   ticketId
 }: Request): Promise<Response> => {
+  logger.info(`[UpdateTicketService] INÍCIO - Atualizando ticket ${ticketId}. Dados: ${JSON.stringify(ticketData)}`);
+
   const { status, userId, queueId, whatsappId } = ticketData;
 
   const ticket = await ShowTicketService(ticketId);
@@ -44,12 +47,17 @@ const UpdateTicketService = async ({
     await CheckContactOpenTickets(ticket.contact.id, ticket.whatsappId);
   }
 
+  let finalQueueId = queueId;
+  if (status === "closed") {
+    logger.info(`[UpdateTicketService] Ticket ${ticketId} sendo FECHADO. Resetando fila para null para futuras reaberturas.`);
+    finalQueueId = null;
+  }
+
   await ticket.update({
     status,
-    queueId,
+    queueId: finalQueueId,
     userId
   });
-
 
   if(whatsappId) {
     await ticket.update({
@@ -58,6 +66,8 @@ const UpdateTicketService = async ({
   }
 
   await ticket.reload();
+
+  logger.info(`[UpdateTicketService] Ticket ${ticketId} atualizado. Status: ${oldStatus} -> ${ticket.status}, Usuário: ${oldUserId} -> ${ticket.user?.id}, Fila: ${ticket.queueId}`);
 
   const io = getIO();
 
@@ -68,8 +78,6 @@ const UpdateTicketService = async ({
     });
   }
 
-
-
   io.to(ticket.status)
     .to("notification")
     .to(ticketId.toString())
@@ -77,6 +85,8 @@ const UpdateTicketService = async ({
       action: "update",
       ticket
     });
+
+  logger.info(`[UpdateTicketService] FIM - Eventos emitidos para ticket ${ticketId}`);
 
   return { ticket, oldStatus, oldUserId };
 };

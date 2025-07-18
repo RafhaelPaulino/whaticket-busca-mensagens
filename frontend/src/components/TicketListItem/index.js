@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef, useContext } from "react";
-
 import { useHistory, useParams } from "react-router-dom";
 import { parseISO, format, isSameDay } from "date-fns";
 import clsx from "clsx";
 
 import { makeStyles } from "@material-ui/core/styles";
-import { green } from "@material-ui/core/colors";
+import { green, grey } from "@material-ui/core/colors";
 import ListItem from "@material-ui/core/ListItem";
 import ListItemText from "@material-ui/core/ListItemText";
 import ListItemAvatar from "@material-ui/core/ListItemAvatar";
@@ -13,15 +12,16 @@ import Typography from "@material-ui/core/Typography";
 import Avatar from "@material-ui/core/Avatar";
 import Divider from "@material-ui/core/Divider";
 import Badge from "@material-ui/core/Badge";
+import Tooltip from "@material-ui/core/Tooltip";
+import AccountCircleIcon from '@material-ui/icons/AccountCircle';
 
 import { i18n } from "../../translate/i18n";
-
 import api from "../../services/api";
 import ButtonWithSpinner from "../ButtonWithSpinner";
 import MarkdownWrapper from "../MarkdownWrapper";
-import { Tooltip } from "@material-ui/core";
 import { AuthContext } from "../../context/Auth/AuthContext";
 import toastError from "../../errors/toastError";
+import TicketsContext from "../../context/TicketsContext";
 
 const useStyles = makeStyles(theme => ({
 	ticket: {
@@ -72,7 +72,8 @@ const useStyles = makeStyles(theme => ({
 	},
 
 	contactLastMessage: {
-		paddingRight: 20,
+		paddingRight: "5%",
+		marginLeft: "5px",
 	},
 
 	newMessagesCount: {
@@ -108,11 +109,20 @@ const useStyles = makeStyles(theme => ({
 		background: "#2576D2",
 		color: "#ffffff",
 		border: "1px solid #CCC",
-		padding: 1,
-		paddingLeft: 5,
-		paddingRight: 5,
+		padding: "1px 5px",
 		borderRadius: 10,
 		fontSize: "0.9em"
+	},
+	
+	attendingUser: {
+		display: "flex",
+		alignItems: "center",
+		gap: "5px",
+		fontSize: "0.75rem",
+		color: grey[600],
+		marginTop: "2px",
+		marginLeft: "5px",
+		fontWeight: 500,
 	},
 }));
 
@@ -123,6 +133,7 @@ const TicketListItem = ({ ticket }) => {
 	const { ticketId } = useParams();
 	const isMounted = useRef(true);
 	const { user } = useContext(AuthContext);
+	const { refreshTickets } = useContext(TicketsContext);
 
 	useEffect(() => {
 		return () => {
@@ -137,6 +148,8 @@ const TicketListItem = ({ ticket }) => {
 				status: "open",
 				userId: user?.id,
 			});
+	
+			refreshTickets();
 		} catch (err) {
 			setLoading(false);
 			toastError(err);
@@ -217,29 +230,46 @@ const TicketListItem = ({ ticket }) => {
 						</span>
 					}
 					secondary={
-						<span className={classes.contactNameWrapper}>
-							<Typography
-								className={classes.contactLastMessage}
-								noWrap
-								component="span"
-								variant="body2"
-								color="textSecondary"
-							>
-								{ticket.lastMessage ? (
-									<MarkdownWrapper>{ticket.lastMessage}</MarkdownWrapper>
-								) : (
-									<br />
-								)}
-							</Typography>
+						<>
+							<span className={classes.contactNameWrapper}>
+								<Typography
+									className={classes.contactLastMessage}
+									noWrap
+									component="span"
+									variant="body2"
+									color="textSecondary"
+								>
+									{ticket.lastMessage ? (
+										<MarkdownWrapper>{ticket.lastMessage}</MarkdownWrapper>
+									) : (
+										<br />
+									)}
+								</Typography>
 
-							<Badge
-								className={classes.newMessagesCount}
-								badgeContent={ticket.unreadMessages}
-								classes={{
-									badge: classes.badgeStyle,
-								}}
-							/>
-						</span>
+								<Badge
+									className={classes.newMessagesCount}
+									badgeContent={ticket.unreadMessages}
+									overlap="rectangular"
+									classes={{
+										badge: classes.badgeStyle,
+									}}
+								/>
+							</span>
+							{(ticket.status === "open" || ticket.status === "pending") && ticket.user && (
+								<Tooltip title={ticket.status === 'open' ? `Atendente: ${ticket.user.name}` : `Responsável: ${ticket.user.name}`}>
+									<Typography
+										className={classes.attendingUser}
+										noWrap
+										component="span"
+										variant="body2"
+										color="textSecondary"
+									>
+										<AccountCircleIcon fontSize="small" />
+										{ticket.user.name}
+									</Typography>
+								</Tooltip>
+							)}
+						</>
 					}
 				/>
 				{ticket.status === "pending" && (

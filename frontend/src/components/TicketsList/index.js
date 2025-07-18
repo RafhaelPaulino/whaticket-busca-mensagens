@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useReducer, useContext } from "react";
-import openSocket from "../../services/socket-io";
+import React, { useState, useEffect, useReducer, useContext, useRef } from "react";
+import connectToSocket from "../../services/socket-io";
 
 import { makeStyles } from "@material-ui/core/styles";
 import List from "@material-ui/core/List";
@@ -72,186 +72,160 @@ const useStyles = makeStyles(theme => ({
 }));
 
 const reducer = (state, action) => {
-	if (action.type === "LOAD_TICKETS") {
-		const newTickets = action.payload;
+	console.log(`[REDUCER:${action.status}]`, { type: action.type, ticketId: action.payload?.id || action.payload, stateSize: state.length });
 
-		newTickets.forEach(ticket => {
-			const ticketIndex = state.findIndex(t => t.id === ticket.id);
-			if (ticketIndex !== -1) {
-				state[ticketIndex] = ticket;
-				if (ticket.unreadMessages > 0) {
-					state.unshift(state.splice(ticketIndex, 1)[0]);
-				}
+	switch (action.type) {
+		case "LOAD_TICKETS": {
+			const newTickets = action.payload;
+			const uniqueNewTickets = newTickets.filter(
+				(newTicket) => !state.some((existingTicket) => existingTicket.id === newTicket.id)
+			);
+			return [...state, ...uniqueNewTickets];
+		}
+
+		case "RESET_UNREAD": {
+			const ticketId = action.payload;
+			return state.map(ticket =>
+				ticket.id === ticketId ? { ...ticket, unreadMessages: 0 } : ticket
+			);
+		}
+
+		
+		case "UPDATE_TICKET": {
+			const updatedTicket = action.payload;
+			const currentListStatus = action.status;
+			
+			
+			const newState = state.filter(t => t.id !== updatedTicket.id);
+
+			if (updatedTicket.status === currentListStatus) {
+				newState.unshift(updatedTicket);
+				console.log(`[REDUCER] Ticket ${updatedTicket.id} adicionado/atualizado na lista '${currentListStatus}'.`);
 			} else {
-				state.push(ticket);
+				console.log(`[REDUCER] Ticket ${updatedTicket.id} não pertence à lista '${currentListStatus}', removido (se existia).`);
 			}
-		});
-
-		return [...state];
-	}
-
-	if (action.type === "RESET_UNREAD") {
-		const ticketId = action.payload;
-
-		const ticketIndex = state.findIndex(t => t.id === ticketId);
-		if (ticketIndex !== -1) {
-			state[ticketIndex].unreadMessages = 0;
+			
+			return newState;
 		}
 
-		return [...state];
-	}
-
-	if (action.type === "UPDATE_TICKET") {
-		const ticket = action.payload;
-
-		const ticketIndex = state.findIndex(t => t.id === ticket.id);
-		if (ticketIndex !== -1) {
-			state[ticketIndex] = ticket;
-		} else {
-			state.unshift(ticket);
+		case "UPDATE_TICKET_CONTACT": {
+			const contact = action.payload;
+			return state.map(ticket =>
+				ticket.contactId === contact.id ? { ...ticket, contact } : ticket
+			);
 		}
 
-		return [...state];
-	}
-
-	if (action.type === "UPDATE_TICKET_UNREAD_MESSAGES") {
-		const ticket = action.payload;
-
-		const ticketIndex = state.findIndex(t => t.id === ticket.id);
-		if (ticketIndex !== -1) {
-			state[ticketIndex] = ticket;
-			state.unshift(state.splice(ticketIndex, 1)[0]);
-		} else {
-			state.unshift(ticket);
+		case "DELETE_TICKET": {
+			const ticketId = action.payload;
+			const ticketExists = state.some(t => t.id === ticketId);
+			console.log(`[REDUCER] Recebida ordem para deletar ticket ${ticketId}. Ele existe nesta lista ('${action.status}')? ${ticketExists}`);
+			return state.filter(t => t.id !== ticketId);
 		}
 
-		return [...state];
-	}
-
-	if (action.type === "UPDATE_TICKET_CONTACT") {
-		const contact = action.payload;
-		const ticketIndex = state.findIndex(t => t.contactId === contact.id);
-		if (ticketIndex !== -1) {
-			state[ticketIndex].contact = contact;
-		}
-		return [...state];
-	}
-
-	if (action.type === "DELETE_TICKET") {
-		const ticketId = action.payload;
-		const ticketIndex = state.findIndex(t => t.id === ticketId);
-		if (ticketIndex !== -1) {
-			state.splice(ticketIndex, 1);
+		case "RESET": {
+			return [];
 		}
 
-		return [...state];
-	}
-
-	if (action.type === "RESET") {
-		return [];
+		default:
+			return state;
 	}
 };
 
-	const TicketsList = (props) => {
-		const { status, searchParam, showAll, selectedQueueIds, updateCount, style } =
-			props;
+const TicketsList = (props) => {
+	const { status, searchParam, showAll, selectedQueueIds, updateCount, style } = props;
 	const classes = useStyles();
 	const [pageNumber, setPageNumber] = useState(1);
 	const [ticketsList, dispatch] = useReducer(reducer, []);
 	const { user } = useContext(AuthContext);
+	const isMountedRef = useRef(true);
+
+	const queueIds = JSON.stringify(selectedQueueIds);
+
+	useEffect(() => {
+		isMountedRef.current = true;
+		return () => { isMountedRef.current = false; };
+	}, []);
 
 	useEffect(() => {
 		dispatch({ type: "RESET" });
 		setPageNumber(1);
-	}, [status, searchParam, dispatch, showAll, selectedQueueIds]);
+	}, [status, searchParam, showAll, queueIds]); 
 
 	const { tickets, hasMore, loading } = useTickets({
 		pageNumber,
 		searchParam,
 		status,
 		showAll,
-		queueIds: JSON.stringify(selectedQueueIds),
+		queueIds: queueIds, 
 	});
 
 	useEffect(() => {
-		if (!status && !searchParam) return;
-		dispatch({
-			type: "LOAD_TICKETS",
-			payload: tickets,
-		});
-	}, [tickets]);
+		if (tickets.length > 0) {
+			dispatch({ type: "LOAD_TICKETS", payload: tickets, status });
+		}
+	}, [tickets, status]);
 
 	useEffect(() => {
-		const socket = openSocket();
+		if (typeof updateCount === 'function') {
+			updateCount(ticketsList.length);
+		}
+	}, [ticketsList, updateCount]);
 
-		const shouldUpdateTicket = ticket => !searchParam &&
-			(!ticket.userId || ticket.userId === user?.id || showAll) &&
-			(!ticket.queueId || selectedQueueIds.indexOf(ticket.queueId) > -1);
+	useEffect(() => {
+		const socket = connectToSocket();
 
-		const notBelongsToUserQueues = ticket =>
-			ticket.queueId && selectedQueueIds.indexOf(ticket.queueId) === -1;
+		const handleTicket = (data) => {
+			if (!isMountedRef.current) return;
+			
+			if (data.action === "update" && data.ticket) {
+				dispatch({ type: "UPDATE_TICKET", payload: data.ticket, status });
+			}
+			if (data.action === "updateUnread") {
+				dispatch({ type: "RESET_UNREAD", payload: data.ticketId, status });
+			}
+			if (data.action === "delete") {
+				dispatch({ type: "DELETE_TICKET", payload: data.ticketId, status });
+			}
+		};
 
-		socket.on("connect", () => {
+		const handleAppMessage = (data) => {
+			if (!isMountedRef.current) return;
+			if (data.action === "create" && data.ticket) {
+				dispatch({ type: "UPDATE_TICKET", payload: data.ticket, status });
+			}
+		};
+
+		const handleContact = (data) => {
+			if (!isMountedRef.current) return;
+			if (data.action === "update") {
+				dispatch({ type: "UPDATE_TICKET_CONTACT", payload: data.contact, status });
+			}
+		};
+
+		const handleConnect = () => {
 			if (status) {
 				socket.emit("joinTickets", status);
-			} else {
-				socket.emit("joinNotification");
 			}
-		});
+			socket.emit("joinNotification");
+		};
 
-		socket.on("ticket", data => {
-			if (data.action === "updateUnread") {
-				dispatch({
-					type: "RESET_UNREAD",
-					payload: data.ticketId,
-				});
-			}
+		socket.on("ticket", handleTicket);
+		socket.on("appMessage", handleAppMessage);
+		socket.on("contact", handleContact);
+		socket.on("connect", handleConnect);
 
-			if (data.action === "update" && shouldUpdateTicket(data.ticket)) {
-				dispatch({
-					type: "UPDATE_TICKET",
-					payload: data.ticket,
-				});
-			}
-
-			if (data.action === "update" && notBelongsToUserQueues(data.ticket)) {
-				dispatch({ type: "DELETE_TICKET", payload: data.ticket.id });
-			}
-
-			if (data.action === "delete") {
-				dispatch({ type: "DELETE_TICKET", payload: data.ticketId });
-			}
-		});
-
-		socket.on("appMessage", data => {
-			if (data.action === "create" && shouldUpdateTicket(data.ticket)) {
-				dispatch({
-					type: "UPDATE_TICKET_UNREAD_MESSAGES",
-					payload: data.ticket,
-				});
-			}
-		});
-
-		socket.on("contact", data => {
-			if (data.action === "update") {
-				dispatch({
-					type: "UPDATE_TICKET_CONTACT",
-					payload: data.contact,
-				});
-			}
-		});
+		if (socket.connected) {
+			handleConnect();
+		}
 
 		return () => {
-			socket.disconnect();
+			socket.off("ticket", handleTicket);
+			socket.off("appMessage", handleAppMessage);
+			socket.off("contact", handleContact);
+			socket.off("connect", handleConnect);
 		};
-	}, [status, searchParam, showAll, user, selectedQueueIds]);
-
-	useEffect(() => {
-    if (typeof updateCount === "function") {
-      updateCount(ticketsList.length);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticketsList]);
+	
+	}, [status, user?.id, showAll, queueIds, searchParam]);
 
 	const loadMore = () => {
 		setPageNumber(prevState => prevState + 1);
@@ -259,17 +233,14 @@ const reducer = (state, action) => {
 
 	const handleScroll = e => {
 		if (!hasMore || loading) return;
-
 		const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-
 		if (scrollHeight - (scrollTop + 100) < clientHeight) {
-			e.currentTarget.scrollTop = scrollTop - 100;
 			loadMore();
 		}
 	};
 
 	return (
-    <Paper className={classes.ticketsListWrapper} style={style}>
+		<Paper className={classes.ticketsListWrapper} style={style}>
 			<Paper
 				square
 				name="closed"
@@ -297,7 +268,7 @@ const reducer = (state, action) => {
 					{loading && <TicketsListSkeleton />}
 				</List>
 			</Paper>
-    </Paper>
+		</Paper>
 	);
 };
 
