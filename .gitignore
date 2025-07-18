@@ -47,3 +47,17 @@ package.json
 
 # Sessions
 **/session_*/
+
+# WhatsApp Sessions (NUNCA commitar)
+**/session_*/
+**/sessions/
+
+# Docker específicos
+backend/.dockerignore
+backend/Dockerfile
+frontend/.dockerignore
+frontend/Dockerfile
+
+# Scripts de desenvolvimento
+backend/generateFakeMessages.js
+backend/.sequelizerc
