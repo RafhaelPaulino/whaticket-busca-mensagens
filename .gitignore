@@ -41,3 +41,7 @@ Thumbs.db
 **/.sequelizerc
 **/generateFakeMessages.js
 **/server.js
+
+# Uploads de usuários (NUNCA commitar)
+**/public/**
+!**/public/.gitkeep
